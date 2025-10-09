@@ -2,19 +2,19 @@ pipeline {
     agent any
     environment {
         // Set GCP project and repository names
-        PROJECT_ID      = 'internal-sandbox-446612'   // <--- UPDATE THIS
-        REPOSITORY_NAME = 'simple-java-app'       // name of your GCR repository
+        PROJECT_ID      = 'internal-sandbox-446612'   // <--- KEEP THIS UPDATED
+        REPOSITORY_NAME = 'simple-java-app'       
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
     }
 
     stages {
-        stage('Checkout') {
+        // *** REMOVE THE ENTIRE CHECKOUT STAGE HERE ***
+
+        stage('Build with Maven') {
             steps {
-                // Poll SCM has already cloned the repository; this stage is optional
-                git branch: 'main', url: 'https://github.com/madhuri-ca/simple-java-maven-app.git' // <--- UPDATE THIS
+                sh 'mvn -B -DskipTests clean package'
             }
         }
-
         stage('Build with Maven') {
             steps {
                 // Build the application; skip tests here, tests run in the next stage
