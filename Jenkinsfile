@@ -18,35 +18,35 @@ pipeline {
 
         // 🔹 Build the Java app with Maven
         stage('Build with Maven') {
-            agent {
-                docker {
-                    image 'maven:3.8.7-jdk-11'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
-            steps {
-                sh 'mvn -B -DskipTests clean package'
-            }
+    agent {
+        docker {
+            image 'maven:3.8.7-jdk-11'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
+    }
+    steps {
+        checkout scm
+        sh 'mvn -B -DskipTests clean package'
+    }
+}
 
-        // 🔹 Run unit tests and publish reports
-        stage('Unit Tests & Reports') {
-            agent {
-                docker {
-                    image 'maven:3.8.7-jdk-11'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock'
-                }
-            }
-            steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
-            }
+stage('Unit Tests & Reports') {
+    agent {
+        docker {
+            image 'maven:3.8.7-jdk-11'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
         }
-
+    }
+    steps {
+        checkout scm
+        sh 'mvn test'
+    }
+    post {
+        always {
+            junit 'target/surefire-reports/*.xml'
+        }
+    }
+}
         // 🔹 Build Docker image
         stage('Build Docker Image') {
             agent any
