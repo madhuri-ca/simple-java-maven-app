@@ -1,5 +1,5 @@
 pipeline {
-    // 1. Use 'agent any' for the pipeline start
+    // Top-level agent set to 'any'
     agent any
     
     environment {
@@ -10,12 +10,13 @@ pipeline {
     }
 
     stages {
-        // 2. Wrap Maven stages with the 'maven' Docker image
+        // Maven stages run in a Docker agent with Maven installed
         stage('Build with Maven') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock' // Inherits socket
+                    // Mount the Docker socket from the host to allow for Docker access
+                    args '-v /var/run/docker.sock:/var/run/docker.sock' 
                 }
             }
             steps {
@@ -27,7 +28,7 @@ pipeline {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock' // Inherits socket
+                    args '-v /var/run/docker.sock:/var/run/docker.sock' 
                 }
             }
             steps {
@@ -42,9 +43,9 @@ pipeline {
             }
         }
 
-        // 3. Keep Docker/GCR stages running on the main node (which has the socket)
+        // Docker/GCR stages run on the main node which is assumed to have Docker access
         stage('Build Docker Image') {
-            agent any // Must run on a node with Docker access
+            agent any 
             steps {
                 script {
                     def imageTag = "${BUILD_NUMBER}"
@@ -54,7 +55,7 @@ pipeline {
         }
 
         stage('Push to GCR') {
-            agent any // Must run on a node with Docker access
+            agent any 
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
@@ -80,20 +81,16 @@ pipeline {
             steps {
                 script {
                     def imageTag = "${BUILD_NUMBER}"
-                    // This stage requires 'kubectl' to be installed on the agent/node
                     sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${imageTag} -n default"
                 }
             }
         }
     }
     
-    // 4. Wrap post-actions in a node to resolve the "MissingContextVariableException: Required context class hudson.FilePath is missing" error
     post {
-        always {
-            node {
-                // Always clean up Docker images if build fails
-                sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
-            }
+        failure {
+            // FIX APPLIED: Removed 'node' wrapper
+            sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
         }
     }
 }
