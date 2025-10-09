@@ -1,51 +1,55 @@
 pipeline {
-    // Top-level agent set to 'any'
     agent any
     
     environment {
-        // Set GCP project and repository names
         PROJECT_ID      = 'internal-sandbox-446612'
-        REPOSITORY_NAME = 'simple-java-app'        
+        REPOSITORY_NAME = 'simple-java-app'
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
     }
 
     stages {
-        // Maven stages run in a Docker agent with Maven installed
+
+        // 🔹 NEW STAGE: Clone the GitHub repository
+        stage('Checkout Source') {
+            steps {
+                git branch: 'main', url: 'https://github.com/madhuri-ca/simple-java-maven-app.git'
+            }
+        }
+
+        // 🔹 Build the Java app with Maven
         stage('Build with Maven') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    // Mount the Docker socket from the host to allow for Docker access
-                    args '-v /var/run/docker.sock:/var/run/docker.sock' 
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
                 }
             }
             steps {
                 sh 'mvn -B -DskipTests clean package'
             }
         }
-        
+
+        // 🔹 Run unit tests and publish reports
         stage('Unit Tests & Reports') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-v /var/run/docker.sock:/var/run/docker.sock' 
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
                 }
             }
             steps {
-                // Run unit tests
                 sh 'mvn test'
             }
             post {
                 always {
-                    // Publish JUnit test reports
                     junit 'target/surefire-reports/*.xml'
                 }
             }
         }
 
-        // Docker/GCR stages run on the main node which is assumed to have Docker access
+        // 🔹 Build Docker image
         stage('Build Docker Image') {
-            agent any 
+            agent any
             steps {
                 script {
                     def imageTag = "${BUILD_NUMBER}"
@@ -54,25 +58,22 @@ pipeline {
             }
         }
 
+        // 🔹 Push Docker image to Google Container Registry (GCR)
         stage('Push to GCR') {
-            agent any 
+            agent any
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
-                        // Authenticate with GCR
                         sh 'echo "$GCR_KEY" | docker login -u $GCR_USER --password-stdin https://gcr.io'
-                        
-                        // Push the image
                         def imageTag = "${BUILD_NUMBER}"
                         sh "docker push ${IMAGE_NAME}:${imageTag}"
-                        
-                        // Log out to clean up
                         sh 'docker logout https://gcr.io'
                     }
                 }
             }
         }
 
+        // 🔹 Deploy to GKE (optional, controlled by env variable)
         stage('Deploy to Kubernetes (optional)') {
             agent any
             when {
@@ -86,10 +87,9 @@ pipeline {
             }
         }
     }
-    
+
     post {
         failure {
-            // FIX APPLIED: Removed 'node' wrapper
             sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
         }
     }
