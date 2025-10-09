@@ -1,28 +1,87 @@
 pipeline {
     agent any
-    options {
-        skipStagesAfterUnstable()
+    environment {
+        // Set GCP project and repository names
+        PROJECT_ID      = 'internal-sandbox-446612'   // <--- UPDATE THIS
+        REPOSITORY_NAME = 'simple-java-app'       // name of your GCR repository
+        IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
     }
+
     stages {
-        stage('Build') {
+        stage('Checkout') {
             steps {
+                // Poll SCM has already cloned the repository; this stage is optional
+                git branch: 'main', url: 'https://github.com/madhuri-ca/simple-java-maven-app.git' // <--- UPDATE THIS
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                // Build the application; skip tests here, tests run in the next stage
                 sh 'mvn -B -DskipTests clean package'
             }
         }
-        stage('Test') {
+
+        stage('Unit Tests & Reports') {
             steps {
+                // Run unit tests
                 sh 'mvn test'
             }
             post {
                 always {
+                    // Publish JUnit test reports — Jenkins displays results in the UI
                     junit 'target/surefire-reports/*.xml'
                 }
             }
         }
-        stage('Deliver') { 
+
+        stage('Build Docker Image') {
             steps {
-                sh './jenkins/scripts/deliver.sh' 
+                script {
+                    // Build the Docker image using the jar produced by Maven
+                    // Tag with the Jenkins BUILD_NUMBER to ensure unique tags
+                    def imageTag = "${BUILD_NUMBER}"
+                    sh "docker build -t ${IMAGE_NAME}:${imageTag} ."
+                }
             }
+        }
+
+        stage('Push to GCR') {
+            steps {
+                script {
+                    // Use the service account JSON key stored in Jenkins credentials
+                    withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
+                        // Authenticate with GCR
+                        sh 'echo "$GCR_KEY" | docker login -u $GCR_USER --password-stdin https://gcr.io'
+                        
+                        // Push the image
+                        def imageTag = "${BUILD_NUMBER}"
+                        sh "docker push ${IMAGE_NAME}:${imageTag}"
+                        
+                        // Log out to clean up
+                        sh 'docker logout https://gcr.io'
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes (optional)') {
+            when {
+                expression { env.DEPLOY_TO_K8S == 'true' }
+            }
+            steps {
+                script {
+                    // Example using kubectl to deploy to a cluster
+                    def imageTag = "${BUILD_NUMBER}"
+                    sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${imageTag} -n default"
+                }
+            }
+        }
+    }
+    post {
+        failure {
+            // Always clean up Docker images if build fails
+            sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
         }
     }
 }
