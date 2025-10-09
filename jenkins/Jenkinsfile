@@ -1,49 +1,52 @@
 pipeline {
-    // === CHANGE APPLIED HERE ===
-    agent {
-        docker {
-            image 'maven:3.8.7-jdk-11' // Agent with Maven and JDK 11 installed
-            // Mount the Docker socket from the host to allow the container 
-            // to run docker build/push commands (D-in-D)
-            args '-v /var/run/docker.sock:/var/run/docker.sock' 
-        }
-    }
-    // ===========================
+    // 1. Use 'agent any' for the pipeline start
+    agent any
     
     environment {
         // Set GCP project and repository names
-        PROJECT_ID      = 'internal-sandbox-446612'   // <--- KEEP THIS UPDATED
+        PROJECT_ID      = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-app'        
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
     }
 
     stages {
-        // *** REMOVE THE ENTIRE CHECKOUT STAGE HERE ***
-
+        // 2. Wrap Maven stages with the 'maven' Docker image
         stage('Build with Maven') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock' // Inherits socket
+                }
+            }
             steps {
                 sh 'mvn -B -DskipTests clean package'
             }
         }
         
         stage('Unit Tests & Reports') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock' // Inherits socket
+                }
+            }
             steps {
                 // Run unit tests
                 sh 'mvn test'
             }
             post {
                 always {
-                    // Publish JUnit test reports — Jenkins displays results in the UI
+                    // Publish JUnit test reports
                     junit 'target/surefire-reports/*.xml'
                 }
             }
         }
 
+        // 3. Keep Docker/GCR stages running on the main node (which has the socket)
         stage('Build Docker Image') {
+            agent any // Must run on a node with Docker access
             steps {
                 script {
-                    // Build the Docker image using the jar produced by Maven
-                    // Tag with the Jenkins BUILD_NUMBER to ensure unique tags
                     def imageTag = "${BUILD_NUMBER}"
                     sh "docker build -t ${IMAGE_NAME}:${imageTag} ."
                 }
@@ -51,11 +54,11 @@ pipeline {
         }
 
         stage('Push to GCR') {
+            agent any // Must run on a node with Docker access
             steps {
                 script {
-                    // Use the service account JSON key stored in Jenkins credentials (gcr-sa-json)
                     withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
-                        // Authenticate with GCR using the service account key
+                        // Authenticate with GCR
                         sh 'echo "$GCR_KEY" | docker login -u $GCR_USER --password-stdin https://gcr.io'
                         
                         // Push the image
@@ -70,22 +73,27 @@ pipeline {
         }
 
         stage('Deploy to Kubernetes (optional)') {
+            agent any
             when {
                 expression { env.DEPLOY_TO_K8S == 'true' }
             }
             steps {
                 script {
-                    // Example using kubectl to deploy to a cluster
                     def imageTag = "${BUILD_NUMBER}"
+                    // This stage requires 'kubectl' to be installed on the agent/node
                     sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${imageTag} -n default"
                 }
             }
         }
     }
+    
+    // 4. Wrap post-actions in a node to resolve the "MissingContextVariableException: Required context class hudson.FilePath is missing" error
     post {
-        failure {
-            // Always clean up Docker images if build fails
-            sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
+        always {
+            node {
+                // Always clean up Docker images if build fails
+                sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
+            }
         }
     }
 }
