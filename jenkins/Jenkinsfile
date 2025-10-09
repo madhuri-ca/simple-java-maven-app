@@ -1,9 +1,19 @@
 pipeline {
-    agent any
+    // === CHANGE APPLIED HERE ===
+    agent {
+        docker {
+            image 'maven:3.8.7-jdk-11' // Agent with Maven and JDK 11 installed
+            // Mount the Docker socket from the host to allow the container 
+            // to run docker build/push commands (D-in-D)
+            args '-v /var/run/docker.sock:/var/run/docker.sock' 
+        }
+    }
+    // ===========================
+    
     environment {
         // Set GCP project and repository names
         PROJECT_ID      = 'internal-sandbox-446612'   // <--- KEEP THIS UPDATED
-        REPOSITORY_NAME = 'simple-java-app'       
+        REPOSITORY_NAME = 'simple-java-app'        
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
     }
 
@@ -43,9 +53,9 @@ pipeline {
         stage('Push to GCR') {
             steps {
                 script {
-                    // Use the service account JSON key stored in Jenkins credentials
+                    // Use the service account JSON key stored in Jenkins credentials (gcr-sa-json)
                     withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
-                        // Authenticate with GCR
+                        // Authenticate with GCR using the service account key
                         sh 'echo "$GCR_KEY" | docker login -u $GCR_USER --password-stdin https://gcr.io'
                         
                         // Push the image
