@@ -15,13 +15,7 @@ pipeline {
                 sh 'mvn -B -DskipTests clean package'
             }
         }
-        stage('Build with Maven') {
-            steps {
-                // Build the application; skip tests here, tests run in the next stage
-                sh 'mvn -B -DskipTests clean package'
-            }
-        }
-
+        
         stage('Unit Tests & Reports') {
             steps {
                 // Run unit tests
