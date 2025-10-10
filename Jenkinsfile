@@ -13,14 +13,11 @@ pipeline {
     stages {
         // 1. Checkout Source
         stage('Checkout Source Code') {
-            steps {
-                echo 'Checking out source code from Git...'
-                // 🔧 Add safety line before using git
-                sh 'git config --global --add safe.directory $PWD || true'
-                
-                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
-            }
-        }
+    steps {
+        echo 'Source code already checked out by Jenkins SCM step.'
+        sh 'git config --global --add safe.directory $PWD || true'
+    }
+}
 
         // 2. Build with Maven
         stage('Build with Maven') {
