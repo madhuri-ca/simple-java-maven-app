@@ -1,16 +1,21 @@
 pipeline {
-    agent any // The default agent for the initial checkout
+    agent any // Default agent for initial stages (like the first Checkout)
 
     environment {
-        // Define key variables used in subsequent stages
+        // Define key variables for clean pipeline operation
         PROJECT_ID = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-app' 
+        
         IMAGE_NAME = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        
+        // Credentials IDs (Ensure these IDs exist in Jenkins Credentials Manager)
+        GCR_CRED_ID = 'gcr-json-key' 
+        KUBE_CRED_ID = 'kubeconfig-credentials-id' 
     }
 
     stages {
-        // 1. Checkout (The Necessary First Step)
+        // 1. Checkout (Runs on 'agent any')
         stage('Checkout Source Code') {
             steps {
                 echo 'Checking out source code from Git...'
@@ -19,7 +24,7 @@ pipeline {
             }
         }
 
-        // 2. Build (Corrected to use Docker and Git fix)
+        // 2. Build with Maven (Runs inside 'maven:3.8.7-jdk-11' Docker container)
         stage('Build with Maven') {
             agent {
                 docker {
@@ -28,7 +33,8 @@ pipeline {
                 }
             }
             steps {
-                // 🌟 CRITICAL FIX: Resolves the "fatal: detected dubious ownership" error
+                // 🌟 CRITICAL FIX: Explicitly mark the current directory as safe for Git.
+                // This resolves the "fatal: detected dubious ownership" error inside the container.
                 sh 'git config --global --add safe.directory $PWD || true' 
 
                 echo 'Building the Maven project...'
@@ -36,7 +42,7 @@ pipeline {
             }
         }
 
-        // 3. Unit Tests & Reports (Corrected to use Docker and Git fix)
+        // 3. Unit Tests & Reports (Runs inside 'maven:3.8.7-jdk-11' Docker container)
         stage('Unit Tests & Reports') {
             agent {
                 docker {
@@ -54,18 +60,49 @@ pipeline {
             }
         }
         
-        // ... (Remaining Stages: Build Docker Image, Push to GCR, Deploy to Kubernetes)
-        // You would place the rest of your pipeline stages here.
-        
+        // 4. Build Docker Image 
+        stage('Build Docker Image') {
+            agent any
+            steps {
+                echo 'Building Docker image...'
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+            }
+        }
+
+        // 5. Push to GCR
+        stage('Push to GCR') {
+            agent any
+            steps {
+                echo 'Logging in to GCR and pushing image...'
+                withCredentials([file(credentialsId: GCR_CRED_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+                    sh '''
+                        gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS
+                        gcloud auth configure-docker --quiet
+                    '''
+                }
+                sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+            }
+        }
+
+        // 6. Deploy to Kubernetes
+        stage('Deploy to Kubernetes') {
+            agent any
+            steps {
+                echo 'Deploying to Kubernetes...'
+                withCredentials([file(credentialsId: KUBE_CRED_ID, variable: 'KUBECONFIG')]) {
+                    sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
+                    sh "kubectl rollout status deployment/simple-java-app"
+                }
+            }
+        }
     }
-    
-    // The Necessary Last Step (Post-build actions)
+
     post {
         success {
-            echo '✅ Pipeline execution of Maven stages succeeded.'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo '❌ Maven or Checkout stage failed.'
+            echo '❌ Pipeline failed.'
         }
     }
 }
