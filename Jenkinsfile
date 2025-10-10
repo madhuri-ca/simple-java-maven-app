@@ -1,6 +1,7 @@
 pipeline {
+
     agent any
-    
+
     environment {
         PROJECT_ID      = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-app'
@@ -9,44 +10,37 @@ pipeline {
 
     stages {
 
-        // 🔹 NEW STAGE: Clone the GitHub repository
-        stage('Checkout Source') {
+        // 🔹 Build the Java app with Maven
+        stage('Build with Maven') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
             steps {
-                git branch: 'main', url: 'https://github.com/madhuri-ca/simple-java-maven-app.git'
+                sh 'mvn -B -DskipTests clean package'
             }
         }
 
-        // 🔹 Build the Java app with Maven
-        stage('Build with Maven') {
-    agent {
-        docker {
-            image 'maven:3.8.7-jdk-11'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        // 🔹 Run unit tests and publish reports
+        stage('Unit Tests & Reports') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11'
+                    args '-v /var/run/docker.sock:/var/run/docker.sock'
+                }
+            }
+            steps {
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
         }
-    }
-    steps {
-        checkout scm
-        sh 'mvn -B -DskipTests clean package'
-    }
-}
 
-stage('Unit Tests & Reports') {
-    agent {
-        docker {
-            image 'maven:3.8.7-jdk-11'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
-    steps {
-        checkout scm
-        sh 'mvn test'
-    }
-    post {
-        always {
-            junit 'target/surefire-reports/*.xml'
-        }
-    }
-}
         // 🔹 Build Docker image
         stage('Build Docker Image') {
             agent any
@@ -73,7 +67,7 @@ stage('Unit Tests & Reports') {
             }
         }
 
-        // 🔹 Deploy to GKE (optional, controlled by env variable)
+        // 🔹 Deploy to Kubernetes (optional)
         stage('Deploy to Kubernetes (optional)') {
             agent any
             when {
