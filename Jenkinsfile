@@ -2,6 +2,13 @@ pipeline {
     agent any
 
     stages {
+        stage('Prepare Git') {
+            steps {
+                // Mark the Jenkins workspace as a safe directory for Git
+                sh 'git config --global --add safe.directory $WORKSPACE'
+            }
+        }
+
         stage('Checkout') {
             steps {
                 // Checkout code from GitHub master branch
@@ -11,14 +18,14 @@ pipeline {
 
         stage('Build') {
             steps {
-                // Example build step (if Maven project)
+                // Build the Maven project
                 sh 'mvn clean install'
             }
         }
 
         stage('Test') {
             steps {
-                // Example test step
+                // Run Maven tests
                 sh 'mvn test'
             }
         }
