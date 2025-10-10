@@ -23,16 +23,20 @@ pipeline {
             }
         }
 
-        // 2. Build (FIX APPLIED HERE)
+       // 2. Build (Runs inside 'maven:3.8.7-jdk-11' Docker container)
         stage('Build with Maven') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-u root' // 👈 FIX: Run as root to resolve ownership
-		
+                    // Keep this, as it might still help with other permissions.
+                    args '-u root' 
                 }
             }
             steps {
+                // 🌟 NEW FIX 🌟: Explicitly tell Git that the current workspace ($PWD) is safe.
+                // The '|| true' ensures the pipeline doesn't fail if the command errors for some reason.
+                sh 'git config --global --add safe.directory $PWD || true' 
+
                 echo 'Building the Maven project...'
                 sh 'mvn -B clean package -DskipTests' 
             }
