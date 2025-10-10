@@ -2,59 +2,97 @@ pipeline {
     agent any
 
     environment {
-        // Docker image details
-        IMAGE_NAME = "gcr.io/internal-sandbox-446612/my-app"
+        // Define Project and Image variables for clarity
+        PROJECT_ID = 'internal-sandbox-446612'
+        REPOSITORY_NAME = 'simple-java-app' 
+        
+        IMAGE_NAME = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         
-        // Path to kubeconfig for Kubernetes deployment
-        KUBECONFIG_CREDENTIALS_ID = "kubeconfig-credentials-id"
+        // Credentials IDs
+        GCR_CRED_ID = 'gcr-json-key' // Ensure this is a 'Secret File' credential
+        KUBE_CRED_ID = 'kubeconfig-credentials-id'
     }
 
     stages {
-        stage('Checkout') {
+        // 1. Checkout (Runs on 'agent any')
+        stage('Checkout Source Code') {
             steps {
                 echo 'Checking out source code from Git...'
+                // Use the explicit 'git' step that you confirmed works
                 git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
 
-        stage('Build') {
+        // 2. Build (Runs inside 'maven:3.8.7-jdk-11' Docker container)
+        stage('Build with Maven') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11' // Provides 'mvn' and Java
+                    // Mount the workspace to a volume to share between stages if needed (optional here)
+                }
+            }
             steps {
                 echo 'Building the Maven project...'
-                sh 'mvn clean install -DskipTests'
+                // '-B' for non-interactive mode
+                sh 'mvn -B clean package -DskipTests' 
             }
         }
 
-        stage('Unit Tests') {
+        // 3. Unit Tests & Reports (Runs inside 'maven:3.8.7-jdk-11' Docker container)
+        stage('Unit Tests & Reports') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11' // Must use the same container for test execution
+                }
+            }
             steps {
                 echo 'Running unit tests...'
                 sh 'mvn test'
+                // Publish reports for Jenkins UI
                 junit '**/target/surefire-reports/*.xml'
             }
         }
 
-        stage('Build & Push Docker Image') {
+        // 4. Build Docker Image (Runs on 'agent any', requires 'docker' installed)
+        stage('Build Docker Image') {
+            agent any
             steps {
                 echo 'Building Docker image...'
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+            }
+        }
+
+        // 5. Push Docker Image to GCR (Requires 'docker' and 'gcloud' installed on agent)
+        stage('Push to GCR') {
+            agent any
+            steps {
+                echo 'Logging in to GCR and pushing image...'
                 
-                echo 'Logging in to GCR...'
-                withCredentials([file(credentialsId: 'gcr-json-key', variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
-                    sh 'gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS'
-                    sh "gcloud auth configure-docker --quiet"
+                // Use the GCR Service Account key to authorize gcloud and configure Docker
+                withCredentials([file(credentialsId: GCR_CRED_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+                    // Activate service account and configure Docker for GCR access
+                    sh '''
+                        gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS
+                        gcloud auth configure-docker --quiet
+                    '''
                 }
                 
-                echo 'Pushing Docker image to GCR...'
                 sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
+        // 6. Deploy to Kubernetes (Requires 'kubectl' installed on agent)
         stage('Deploy to Kubernetes') {
+            agent any
             steps {
                 echo 'Deploying to Kubernetes...'
-                withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS_ID}", variable: 'KUBECONFIG')]) {
-                    sh "kubectl set image deployment/my-app my-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
-                    sh "kubectl rollout status deployment/my-app"
+                
+                // Use Kubeconfig credentials (assuming it's a Secret File credential)
+                withCredentials([file(credentialsId: KUBE_CRED_ID, variable: 'KUBECONFIG')]) {
+                    // The KUBECONFIG variable makes kubectl use the file
+                    sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
+                    sh "kubectl rollout status deployment/simple-java-app"
                 }
             }
         }
@@ -62,10 +100,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed.'
+            echo '❌ Pipeline failed.'
         }
     }
 }
