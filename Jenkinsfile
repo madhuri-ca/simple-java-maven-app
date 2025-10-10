@@ -1,5 +1,4 @@
 pipeline {
-
     agent any
 
     environment {
@@ -9,6 +8,15 @@ pipeline {
     }
 
     stages {
+
+        // 🔹 Checkout source code
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'echo "✅ Code checked out successfully!"'
+                sh 'ls -la'
+            }
+        }
 
         // 🔹 Build the Java app with Maven
         stage('Build with Maven') {
@@ -57,7 +65,11 @@ pipeline {
             agent any
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'gcr-sa-json', usernameVariable: 'GCR_USER', passwordVariable: 'GCR_KEY')]) {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'gcr-sa-json',
+                        usernameVariable: 'GCR_USER',
+                        passwordVariable: 'GCR_KEY'
+                    )]) {
                         sh 'echo "$GCR_KEY" | docker login -u $GCR_USER --password-stdin https://gcr.io'
                         def imageTag = "${BUILD_NUMBER}"
                         sh "docker push ${IMAGE_NAME}:${imageTag}"
@@ -83,7 +95,11 @@ pipeline {
     }
 
     post {
+        success {
+            echo "✅ Build and deployment completed successfully!"
+        }
         failure {
+            echo "❌ Build failed! Cleaning up Docker images..."
             sh 'docker rmi $(docker images -q ${IMAGE_NAME}) || true'
         }
     }
