@@ -9,7 +9,7 @@ pipeline {
         IMAGE_NAME = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         
-        // Credentials IDs
+        // Credentials IDs (Ensure these IDs exist in Jenkins Credentials Manager)
         GCR_CRED_ID = 'gcr-json-key' 
         KUBE_CRED_ID = 'kubeconfig-credentials-id' 
     }
@@ -19,22 +19,22 @@ pipeline {
         stage('Checkout Source Code') {
             steps {
                 echo 'Checking out source code from Git...'
+                // Explicit 'git' step used to bypass the initial SCM configuration issues
                 git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
 
-       // 2. Build (Runs inside 'maven:3.8.7-jdk-11' Docker container)
+        // 2. Build (Runs inside 'maven:3.8.7-jdk-11' Docker container)
         stage('Build with Maven') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    // Keep this, as it might still help with other permissions.
-                    args '-u root' 
+                    args '-u root' // Helps with initial permissions
                 }
             }
             steps {
-                // 🌟 NEW FIX 🌟: Explicitly tell Git that the current workspace ($PWD) is safe.
-                // The '|| true' ensures the pipeline doesn't fail if the command errors for some reason.
+                // 🌟 FIX: Explicitly mark the current directory as safe for Git.
+                // This resolves the "fatal: detected dubious ownership" error.
                 sh 'git config --global --add safe.directory $PWD || true' 
 
                 echo 'Building the Maven project...'
@@ -42,22 +42,26 @@ pipeline {
             }
         }
 
-        // 3. Unit Tests & Reports (FIX APPLIED HERE)
+        // 3. Unit Tests & Reports (Runs inside 'maven:3.8.7-jdk-11' Docker container)
         stage('Unit Tests & Reports') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-u root' // 👈 FIX: Run as root to resolve ownership
+                    args '-u root' 
                 }
             }
             steps {
+                // 🌟 FIX: Must be repeated for the new Docker agent context.
+                sh 'git config --global --add safe.directory $PWD || true' 
+                
                 echo 'Running unit tests...'
                 sh 'mvn test'
+                // Publish reports for Jenkins UI
                 junit '**/target/surefire-reports/*.xml'
             }
         }
 
-        // 4. Build Docker Image 
+        // 4. Build Docker Image (Requires Docker installed on the Jenkins agent)
         stage('Build Docker Image') {
             agent any
             steps {
@@ -66,13 +70,15 @@ pipeline {
             }
         }
 
-        // 5. Push Docker Image to GCR 
+        // 5. Push Docker Image to GCR (Requires 'gcloud' and 'docker' installed on the Jenkins agent)
         stage('Push to GCR') {
             agent any
             steps {
                 echo 'Logging in to GCR and pushing image...'
                 
+                // Use the GCR Service Account key for authentication
                 withCredentials([file(credentialsId: GCR_CRED_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+                    // Activate service account and configure Docker for GCR access
                     sh '''
                         gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS
                         gcloud auth configure-docker --quiet
@@ -83,19 +89,31 @@ pipeline {
             }
         }
 
-        // 6. Deploy to Kubernetes 
+        // 6. Deploy to Kubernetes (Requires 'kubectl' installed on the Jenkins agent)
         stage('Deploy to Kubernetes') {
             agent any
             steps {
                 echo 'Deploying to Kubernetes...'
                 
+                // Use Kubeconfig credentials
                 withCredentials([file(credentialsId: KUBE_CRED_ID, variable: 'KUBECONFIG')]) {
+                    // Update the deployment image tag
                     sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
                     sh "kubectl rollout status deployment/simple-java-app"
                 }
             }
         }
     }
+
+    post {
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed.'
+        }
+    }
+}
 
     post {
         success {
