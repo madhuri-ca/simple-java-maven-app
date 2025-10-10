@@ -1,15 +1,35 @@
 pipeline {
     agent any
+
     stages {
-        stage('Debug SCM Checkout') {
+        stage('Checkout') {
             steps {
-                echo "🔍 Checking if workspace has .git folder..."
-                sh 'ls -la'
-                echo "🔹 Running checkout manually now..."
-                checkout scm
-                echo "✅ Checkout complete, listing files:"
-                sh 'ls -la'
+                // Checkout code from GitHub master branch
+                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
+        }
+
+        stage('Build') {
+            steps {
+                // Example build step (if Maven project)
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                // Example test step
+                sh 'mvn test'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed.'
         }
     }
 }
