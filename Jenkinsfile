@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Define Project and Image variables for clarity
+        // Define Project and Image variables
         PROJECT_ID = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-app' 
         
@@ -10,8 +10,8 @@ pipeline {
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         
         // Credentials IDs
-        GCR_CRED_ID = 'gcr-json-key' // Ensure this is a 'Secret File' credential
-        KUBE_CRED_ID = 'kubeconfig-credentials-id'
+        GCR_CRED_ID = 'gcr-json-key' // Ensure this ID exists in Jenkins
+        KUBE_CRED_ID = 'kubeconfig-credentials-id' // Ensure this ID exists in Jenkins
     }
 
     stages {
@@ -19,7 +19,7 @@ pipeline {
         stage('Checkout Source Code') {
             steps {
                 echo 'Checking out source code from Git...'
-                // Use the explicit 'git' step that you confirmed works
+                // Explicit 'git' step is kept, as it resolved your initial SCM errors.
                 git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
@@ -28,13 +28,14 @@ pipeline {
         stage('Build with Maven') {
             agent {
                 docker {
-                    image 'maven:3.8.7-jdk-11' // Provides 'mvn' and Java
-                    // Mount the workspace to a volume to share between stages if needed (optional here)
+                    image 'maven:3.8.7-jdk-11'
+                    // 🌟 FIX for 'dubious ownership': Run container as root 🌟
+                    args '-u root' 
                 }
             }
             steps {
                 echo 'Building the Maven project...'
-                // '-B' for non-interactive mode
+                // Use 'package' to compile and create the JAR/WAR
                 sh 'mvn -B clean package -DskipTests' 
             }
         }
@@ -43,7 +44,9 @@ pipeline {
         stage('Unit Tests & Reports') {
             agent {
                 docker {
-                    image 'maven:3.8.7-jdk-11' // Must use the same container for test execution
+                    image 'maven:3.8.7-jdk-11'
+                    // 🌟 FIX for 'dubious ownership': Run container as root 🌟
+                    args '-u root' 
                 }
             }
             steps {
@@ -69,7 +72,7 @@ pipeline {
             steps {
                 echo 'Logging in to GCR and pushing image...'
                 
-                // Use the GCR Service Account key to authorize gcloud and configure Docker
+                // Use the GCR Service Account key for authentication
                 withCredentials([file(credentialsId: GCR_CRED_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
                     // Activate service account and configure Docker for GCR access
                     sh '''
@@ -88,9 +91,9 @@ pipeline {
             steps {
                 echo 'Deploying to Kubernetes...'
                 
-                // Use Kubeconfig credentials (assuming it's a Secret File credential)
+                // Use Kubeconfig credentials
                 withCredentials([file(credentialsId: KUBE_CRED_ID, variable: 'KUBECONFIG')]) {
-                    // The KUBECONFIG variable makes kubectl use the file
+                    // The KUBECONFIG variable is automatically used by kubectl
                     sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
                     sh "kubectl rollout status deployment/simple-java-app"
                 }
