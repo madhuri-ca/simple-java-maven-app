@@ -28,8 +28,8 @@ pipeline {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    #args '-u root' // 👈 FIX: Run as root to resolve ownership
-		    
+                    args '-u root' // 👈 FIX: Run as root to resolve ownership
+		
                 }
             }
             steps {
@@ -39,17 +39,14 @@ pipeline {
         }
 
         // 3. Unit Tests & Reports (FIX APPLIED HERE)
-         stage('Unit Tests & Reports') {
+        stage('Unit Tests & Reports') {
             agent {
                 docker {
                     image 'maven:3.8.7-jdk-11'
-                    args '-u root' // Keep the '-u root' fix
+                    args '-u root' // 👈 FIX: Run as root to resolve ownership
                 }
             }
             steps {
-                echo 'Setting safe directory for Git...'
-                sh 'git config --global --add safe.directory $PWD || true' 
-                
                 echo 'Running unit tests...'
                 sh 'mvn test'
                 junit '**/target/surefire-reports/*.xml'
