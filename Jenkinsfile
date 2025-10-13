@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // These are placeholders for future use (e.g., when you add Docker/GCR)
         PROJECT_ID = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-maven-app'
     }
@@ -20,7 +19,7 @@ pipeline {
         stage('Build with Maven') {
             agent {
                 docker {
-                    image 'maven:3.8.7-jdk-11'
+                    image 'maven:3.9.9-eclipse-temurin-17'
                     args '-u root'
                 }
             }
@@ -34,7 +33,7 @@ pipeline {
         stage('Run Unit Tests') {
             agent {
                 docker {
-                    image 'maven:3.8.7-jdk-11'
+                    image 'maven:3.9.9-eclipse-temurin-17'
                     args '-u root'
                 }
             }
