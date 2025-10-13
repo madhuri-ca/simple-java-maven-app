@@ -24,20 +24,19 @@ pipeline {
         }
 
         stage('Build with Maven') {
-            steps {
-                echo '⚙️ Building the Maven project...'
-                sh 'mvn -B clean package -DskipTests'
-            }
-        }
-
-        stage('Run Unit Tests') {
-            steps {
-                echo '🧪 Running unit tests...'
-                sh 'mvn test'
-                junit '**/target/surefire-reports/*.xml'
-            }
-        }
+    steps {
+        echo '⚙️ Building the Maven project...'
+        sh 'mvn -B clean package -DskipTests -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit'
     }
+}
+
+stage('Run Unit Tests') {
+    steps {
+        echo '🧪 Running unit tests...'
+        sh 'mvn test -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit'
+        junit '**/target/surefire-reports/*.xml'
+    }
+}
 
     post {
         success {
