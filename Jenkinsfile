@@ -15,23 +15,16 @@ pipeline {
             }
         }
 
-        // 2. Build with Maven
+        // 2. Build with Maven (directly on the VM)
         stage('Build with Maven') {
-    steps {
-        echo "⚙️ Building the Maven project..."
-        sh 'mvn -B clean package -DskipTests'
-    }
-}
-
-
-        // 3. Run Unit Tests
-        stage('Run Unit Tests') {
-            agent {
-                docker {
-                    image 'maven:3.9.9-eclipse-temurin-17'
-                    args '-u root'
-                }
+            steps {
+                echo '⚙️ Building the Maven project...'
+                sh 'mvn -B clean package -DskipTests'
             }
+        }
+
+        // 3. Run Unit Tests (directly on the VM)
+        stage('Run Unit Tests') {
             steps {
                 echo '🧪 Running unit tests...'
                 sh 'mvn test'
