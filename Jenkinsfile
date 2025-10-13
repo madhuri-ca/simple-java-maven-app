@@ -47,7 +47,7 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 echo '🐳 Building and pushing Docker image to GCR...'
-                withCredentials([file(credentialsId: 'gcp-key', variable: 'GCLOUD_KEY')]) {
+                withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
                     sh '''
                         # Authenticate with GCP
                         gcloud auth activate-service-account --key-file=$GCLOUD_KEY
@@ -67,10 +67,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline completed successfully and image pushed to GCR!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo '❌ Build, test, or push stage failed!'
+            echo '❌ Build or test stage failed!'
         }
     }
 }
