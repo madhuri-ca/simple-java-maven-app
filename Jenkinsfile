@@ -2,10 +2,9 @@ pipeline {
     agent any
 
     tools {
-    jdk 'Java-21'
-    maven 'Maven-3.9.11'
-}
-
+        jdk 'Java-21'
+        maven 'Maven-3.9.11'
+    }
 
     environment {
         PROJECT_ID      = 'internal-sandbox-446612'
@@ -66,14 +65,25 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy to VM') {
+            steps {
+                echo '🚀 Deploying app on the VM...'
+                sh '''
+                    docker stop simple-java-app || true
+                    docker rm simple-java-app || true
+                    docker run -d -p 8081:8080 --name simple-java-app gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}:latest
+                '''
+            }
+        }
     }
 
     post {
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully and app deployed on VM!'
         }
         failure {
-            echo '❌ Build or test stage failed!'
+            echo '❌ Build, test, or deploy stage failed!'
         }
     }
 }
