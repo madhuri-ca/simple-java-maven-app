@@ -1,13 +1,23 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'Java-21'
+        maven 'Maven-3.9.11'
+    }
+
     environment {
-        PROJECT_ID = 'internal-sandbox-446612'
+        // Project details (ready for later Docker/GCR use)
+        PROJECT_ID      = 'internal-sandbox-446612'
         REPOSITORY_NAME = 'simple-java-maven-app'
+
+        // Future Docker image (not used yet in this phase)
+        IMAGE_NAME = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
+        IMAGE_TAG  = "${env.BUILD_NUMBER}"
     }
 
     stages {
-        // 1. Checkout the source code
+        // 1. Checkout
         stage('Checkout Source Code') {
             steps {
                 echo '📦 Checking out source code from GitHub...'
@@ -15,7 +25,7 @@ pipeline {
             }
         }
 
-        // 2. Build with Maven (directly on the VM)
+        // 2. Build
         stage('Build with Maven') {
             steps {
                 echo '⚙️ Building the Maven project...'
@@ -23,7 +33,7 @@ pipeline {
             }
         }
 
-        // 3. Run Unit Tests (directly on the VM)
+        // 3. Test
         stage('Run Unit Tests') {
             steps {
                 echo '🧪 Running unit tests...'
