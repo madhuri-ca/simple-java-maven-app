@@ -21,12 +21,7 @@ pipeline {
             }
         }
 
-        stage('Checkout Source Code') {
-            steps {
-                echo '📦 Checking out source code from GitHub...'
-                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
-            }
-        }
+    
 
 
         stage('Build with Maven') {
