@@ -53,7 +53,7 @@ pipeline {
                         gcloud auth activate-service-account --key-file=$GCLOUD_KEY
                         gcloud auth configure-docker gcr.io -q
 
-                        # Build Docker image
+                        # Build Docker image using repo's Dockerfile
                         docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
 
                         # Push Docker image to GCR
