@@ -1,10 +1,10 @@
 pipeline {
     agent any
 
-   tools {
-    jdk 'Java-21'
-    maven 'Maven-3.8.7'
-}
+    tools {
+        jdk 'Java-21'
+        maven 'Maven-3.8.7'
+    }
 
     environment {
         PROJECT_ID      = 'internal-sandbox-446612'
@@ -17,12 +17,16 @@ pipeline {
         stage('Clean Workspace') {
             steps {
                 echo '🧹 Cleaning workspace...'
-                deleteDir()   // clears out old workspace
+                deleteDir()
             }
         }
 
-    
-
+        stage('Checkout Source Code') {
+            steps {
+                echo '📦 Checking out source code...'
+                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
+            }
+        }
 
         stage('Build with Maven') {
             steps {
@@ -52,14 +56,9 @@ pipeline {
                 echo '🐳 Building and pushing Docker image to GCR...'
                 withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
                     sh '''
-                        # Authenticate with GCP
                         gcloud auth activate-service-account --key-file=$GCLOUD_KEY
                         gcloud auth configure-docker gcr.io -q
-
-                        # Build Docker image using repo's Dockerfile
                         docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
-
-                        # Push Docker image to GCR
                         docker push $IMAGE_NAME:$IMAGE_TAG
                         docker push $IMAGE_NAME:latest
                     '''
