@@ -1,23 +1,37 @@
-# Step 1: Build stage (using Maven to compile & package the app)
-FROM maven:3.9.9-eclipse-temurin-21 AS builder
+# Start from official Jenkins LTS with JDK 21
+FROM jenkins/jenkins:lts-jdk21
 
-WORKDIR /app
+USER root
 
-# Copy pom.xml and download dependencies
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
+# Install basic tools + Docker CLI + Google Cloud SDK
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy source code and build
-COPY src ./src
-RUN mvn clean package -DskipTests
+# Install Docker CLI
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
+    > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli
 
-# Step 2: Runtime stage (lightweight image with just JRE)
-FROM eclipse-temurin:21-jre
+# Install Google Cloud SDK
+RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list && \
+    apt-get update && apt-get install -y google-cloud-cli
 
-WORKDIR /app
+# Install Maven
+RUN curl -fsSL https://downloads.apache.org/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.tar.gz \
+    | tar -xz -C /opt && \
+    ln -s /opt/apache-maven-3.9.6 /opt/maven
 
-# Copy the JAR built in the builder stage
-COPY --from=builder /app/target/my-app-1.0-SNAPSHOT.jar app.jar
+# Add Maven & gcloud to PATH
+ENV PATH="/opt/maven/bin:$PATH"
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Switch back to Jenkins user
+USER jenkins
