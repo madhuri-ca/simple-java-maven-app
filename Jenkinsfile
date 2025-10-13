@@ -20,6 +20,11 @@ pipeline {
                 git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
+stage('Clean Workspace') {
+    steps {
+        deleteDir()  // wipes the workspace before fresh checkout
+    }
+}
 
         stage('Build with Maven') {
             steps {
