@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     tools {
-        jdk 'Java-21'
-        maven 'Maven-3.9.11'
-    }
+    jdk 'Java-21'
+    maven 'Maven-3.8.7'
+}
 
     environment {
         PROJECT_ID      = 'internal-sandbox-446612'
