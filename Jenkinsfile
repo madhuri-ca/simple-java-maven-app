@@ -5,7 +5,6 @@ pipeline {
         jdk 'Java-21'
         maven 'Maven-3.9.11'
     }
-
     environment {
         // Project details (ready for later Docker/GCR use)
         PROJECT_ID      = 'internal-sandbox-446612'
@@ -17,7 +16,6 @@ pipeline {
     }
 
     stages {
-        // 1. Checkout
         stage('Checkout Source Code') {
             steps {
                 echo '📦 Checking out source code from GitHub...'
@@ -25,7 +23,6 @@ pipeline {
             }
         }
 
-        // 2. Build
         stage('Build with Maven') {
             steps {
                 echo '⚙️ Building the Maven project...'
@@ -33,7 +30,6 @@ pipeline {
             }
         }
 
-        // 3. Test
         stage('Run Unit Tests') {
             steps {
                 echo '🧪 Running unit tests...'
@@ -45,7 +41,7 @@ pipeline {
 
     post {
         success {
-            echo '✅ Build and test stages completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
             echo '❌ Build or test stage failed!'
