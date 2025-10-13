@@ -2,71 +2,89 @@ pipeline {
     agent any
 
     environment {
-        PROJECT_ID     = 'internal-sandbox-446612'
-        REPOSITORY_NAME = 'simple-java-app'
-        IMAGE_NAME     = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
-        IMAGE_TAG      = "${env.BUILD_NUMBER}"
-        GCR_CRED_ID    = 'gcr-json-key'
-        KUBE_CRED_ID   = 'kubeconfig-credentials-id'
+        // Define Project and Image variables
+        PROJECT_ID = 'internal-sandbox-446612'
+        REPOSITORY_NAME = 'simple-java-app' 
+        
+        IMAGE_NAME = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
+        IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        
+        // Credentials IDs
+        GCR_CRED_ID = 'gcr-json-key' 
+        KUBE_CRED_ID = 'kubeconfig-credentials-id' 
     }
 
     stages {
-
-        // ✅ Build Stage
-        stage('Build with Maven') {
-            agent {
-                docker {
-                    image 'maven:3.9.9-eclipse-temurin-17'   // ✅ updated to a valid image tag
-                    args '-v /root/.m2:/root/.m2'
-                }
-            }
+        // 1. Checkout (Runs on 'agent any')
+        stage('Checkout Source Code') {
             steps {
-                echo '🔧 Building the Maven project...'
-                sh 'mvn -B clean package -DskipTests'
+                echo 'Checking out source code from Git...'
+                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
 
-        // ✅ Test Stage
-        stage('Unit Tests & Reports') {
+        // 2. Build (FIX APPLIED HERE)
+        stage('Build with Maven') {
             agent {
                 docker {
-                    image 'maven:3.9.9-eclipse-temurin-17'   // ✅ using same version for consistency
-                    args '-v /root/.m2:/root/.m2'
+                    image 'maven:3.8.7-jdk-11'
+                    args '-u root' // 👈 FIX: Run as root to resolve ownership
+		
                 }
             }
             steps {
-                echo '🧪 Running unit tests...'
+                echo 'Building the Maven project...'
+                sh 'mvn -B clean package -DskipTests' 
+            }
+        }
+
+        // 3. Unit Tests & Reports (FIX APPLIED HERE)
+        stage('Unit Tests & Reports') {
+            agent {
+                docker {
+                    image 'maven:3.8.7-jdk-11'
+                    args '-u root' // 👈 FIX: Run as root to resolve ownership
+                }
+            }
+            steps {
+                echo 'Running unit tests...'
                 sh 'mvn test'
                 junit '**/target/surefire-reports/*.xml'
             }
         }
 
-        // ✅ Docker Build
+        // 4. Build Docker Image 
         stage('Build Docker Image') {
+            agent any
             steps {
-                echo '🐳 Building Docker image...'
+                echo 'Building Docker image...'
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
-        // ✅ Push to GCR
+        // 5. Push Docker Image to GCR 
         stage('Push to GCR') {
+            agent any
             steps {
-                echo '☁️ Pushing image to Google Container Registry...'
+                echo 'Logging in to GCR and pushing image...'
+                
                 withCredentials([file(credentialsId: GCR_CRED_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
                     sh '''
-                        gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+                        gcloud auth activate-service-account --key-file $GOOGLE_APPLICATION_CREDENTIALS
                         gcloud auth configure-docker --quiet
                     '''
                 }
+                
                 sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
-        // ✅ Deploy to Kubernetes
+        // 6. Deploy to Kubernetes 
         stage('Deploy to Kubernetes') {
+            agent any
             steps {
-                echo '🚀 Deploying to Kubernetes...'
+                echo 'Deploying to Kubernetes...'
+                
                 withCredentials([file(credentialsId: KUBE_CRED_ID, variable: 'KUBECONFIG')]) {
                     sh "kubectl set image deployment/simple-java-app simple-java-app=${IMAGE_NAME}:${IMAGE_TAG} --record"
                     sh "kubectl rollout status deployment/simple-java-app"
@@ -80,7 +98,7 @@ pipeline {
             echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo '❌ Pipeline failed. Check logs for details.'
+            echo '❌ Pipeline failed.'
         }
     }
 }
