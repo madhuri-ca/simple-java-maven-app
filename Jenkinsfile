@@ -43,14 +43,34 @@ pipeline {
                 junit '**/target/surefire-reports/*.xml'
             }
         }
+
+        stage('Build & Push Docker Image') {
+            steps {
+                echo '🐳 Building and pushing Docker image to GCR...'
+                withCredentials([file(credentialsId: 'gcp-key', variable: 'GCLOUD_KEY')]) {
+                    sh '''
+                        # Authenticate with GCP
+                        gcloud auth activate-service-account --key-file=$GCLOUD_KEY
+                        gcloud auth configure-docker gcr.io -q
+
+                        # Build Docker image
+                        docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+
+                        # Push Docker image to GCR
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                        docker push $IMAGE_NAME:latest
+                    '''
+                }
+            }
+        }
     }
 
     post {
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully and image pushed to GCR!'
         }
         failure {
-            echo '❌ Build or test stage failed!'
+            echo '❌ Build, test, or push stage failed!'
         }
     }
 }
