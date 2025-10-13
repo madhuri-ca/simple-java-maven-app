@@ -15,11 +15,12 @@ pipeline {
 
         stage('Build with Maven') {
             agent {
-                docker {
-                    image 'maven:3.8.7-jdk-11'
-                    args '-u root'
-                }
-            }
+    docker {
+        image 'maven:3.8.8-eclipse-temurin-11'
+        args '-v /root/.m2:/root/.m2'
+    }
+}
+
             steps {
                 echo 'Building the Maven project...'
                 sh 'mvn -B clean package -DskipTests'
