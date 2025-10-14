@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: simple-java-app
-        image: gcr.io/YOUR_PROJECT_ID/simple-java-maven-app:latest
+        image: gcr.io/internal-sandbox-446612/simple-java-maven-app:latest
         ports:
         - containerPort: 8080
         resources:
