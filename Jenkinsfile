@@ -11,6 +11,8 @@ pipeline {
         REPOSITORY_NAME = 'simple-java-maven-app'
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        CLUSTER_NAME    = 'simple-cluster'
+        CLUSTER_ZONE    = 'us-central1-a'
     }
 
     stages {
@@ -28,19 +30,27 @@ pipeline {
             }
         }
 
-       stage('Build with Maven') {
-    steps {
-        sh 'mvn -B clean package -DskipTests'
-    }
-}
+        stage('Clean Maven Repo') {
+            steps {
+                echo '🗑 Clearing local Maven repo cache...'
+                sh 'rm -rf ~/.m2/repository/*'
+            }
+        }
 
-stage('Run Unit Tests') {
-    steps {
-        sh 'mvn test'
-        junit '**/target/surefire-reports/*.xml'
-    }
-}
+        stage('Build with Maven') {
+            steps {
+                echo '⚙ Building the Maven project...'
+                sh 'mvn -B clean package -DskipTests'
+            }
+        }
 
+        stage('Run Unit Tests') {
+            steps {
+                echo '🧪 Running unit tests...'
+                sh 'mvn test'
+                junit '**/target/surefire-reports/*.xml'
+            }
+        }
 
         stage('Build & Push Docker Image') {
             steps {
@@ -59,6 +69,7 @@ stage('Run Unit Tests') {
 
         stage('Deploy to GKE') {
             steps {
+                echo '🚀 Deploying application to GKE...'
                 withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
                     sh '''
                         gcloud auth activate-service-account --key-file=$GCLOUD_KEY
@@ -75,7 +86,7 @@ stage('Run Unit Tests') {
 
     post {
         success {
-            echo '✅ Pipeline completed successfully and app deployed on VM!'
+            echo '✅ Pipeline completed successfully and app deployed on GKE!'
         }
         failure {
             echo '❌ Build, test, or deploy stage failed!'
