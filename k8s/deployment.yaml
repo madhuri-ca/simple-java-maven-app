@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-java-app
+  labels:
+    app: simple-java-app
+spec:
+  replicas: 2   # number of pods
+  selector:
+    matchLabels:
+      app: simple-java-app
+  template:
+    metadata:
+      labels:
+        app: simple-java-app
+    spec:
+      containers:
+      - name: simple-java-app
+        image: gcr.io/YOUR_PROJECT_ID/simple-java-maven-app:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
