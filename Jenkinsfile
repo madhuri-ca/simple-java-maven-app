@@ -7,13 +7,15 @@ pipeline {
     }
 
     environment {
-        PROJECT_ID      = 'internal-sandbox-446612'
-        REPOSITORY_NAME = 'simple-java-maven-app'
-        IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
-        IMAGE_TAG       = "${env.BUILD_NUMBER}"
-        CLUSTER_NAME    = 'simple-cluster'
-        CLUSTER_ZONE    = 'us-central1-a'
-    }
+    PROJECT_ID      = 'internal-sandbox-446612'
+    REPOSITORY_NAME = 'simple-java-maven-app'
+    IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
+    IMAGE_TAG       = "${env.BUILD_NUMBER}"
+    CLUSTER_NAME    = 'simple-cluster'
+    CLUSTER_ZONE    = 'us-central1-a'
+    PATH            = "/google-cloud-sdk/bin:${env.PATH}"
+}
+
 
     stages {
         stage('Clean Workspace') {
