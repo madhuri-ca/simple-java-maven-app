@@ -11,49 +11,38 @@ pipeline {
         REPOSITORY_NAME = 'simple-java-maven-app'
         IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        CLUSTER_NAME    = 'simple-cluster'
+        CLUSTER_ZONE    = 'us-central1-a'
     }
 
     stages {
         stage('Clean Workspace') {
             steps {
-                echo '🧹 Cleaning workspace...'
                 deleteDir()
             }
         }
 
         stage('Checkout Source Code') {
             steps {
-                echo '📦 Checking out source code...'
                 git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
             }
         }
 
         stage('Build with Maven') {
             steps {
-                echo '⚙️ Building the Maven project...'
-                sh '''
-                  mvn -B clean package -DskipTests \
-                    -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts \
-                    -Djavax.net.ssl.trustStorePassword=changeit
-                '''
+                sh 'mvn -B clean package -DskipTests'
             }
         }
 
         stage('Run Unit Tests') {
             steps {
-                echo '🧪 Running unit tests...'
-                sh '''
-                  mvn test \
-                    -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts \
-                    -Djavax.net.ssl.trustStorePassword=changeit
-                '''
+                sh 'mvn test'
                 junit '**/target/surefire-reports/*.xml'
             }
         }
 
         stage('Build & Push Docker Image') {
             steps {
-                echo '🐳 Building and pushing Docker image to GCR...'
                 withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
                     sh '''
                         gcloud auth activate-service-account --key-file=$GCLOUD_KEY
@@ -66,21 +55,25 @@ pipeline {
             }
         }
 
-        stage('Deploy to VM') {
+        stage('Deploy to GKE') {
             steps {
-                echo '🚀 Deploying app on the VM...'
-                sh '''
-                    docker stop simple-java-app || true
-                    docker rm simple-java-app || true
-                    docker run -d -p 8081:8080 --name simple-java-app gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}:latest
-                '''
+                withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
+                    sh '''
+                        gcloud auth activate-service-account --key-file=$GCLOUD_KEY
+                        gcloud config set project $PROJECT_ID
+                        gcloud container clusters get-credentials $CLUSTER_NAME --zone $CLUSTER_ZONE --project $PROJECT_ID
+
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                    '''
+                }
             }
         }
     }
 
     post {
         success {
-            echo '✅ Pipeline completed successfully and app deployed on VM!'
+            echo '✅ Pipeline completed successfully and app deployed on GKE!'
         }
         failure {
             echo '❌ Build, test, or deploy stage failed!'
