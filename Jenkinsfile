@@ -13,7 +13,7 @@ pipeline {
     IMAGE_TAG       = "${env.BUILD_NUMBER}"
     CLUSTER_NAME    = 'simple-cluster'
     CLUSTER_ZONE    = 'us-central1-a'
-    PATH            = "/google-cloud-sdk/bin:${env.PATH}"
+    PATH            = "/google-cloud-sdk/bin:/usr/bin:${env.PATH}"
 }
 
 
