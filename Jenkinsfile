@@ -1,96 +1,73 @@
 pipeline {
-    agent any
+  agent any
 
-    tools {
-        jdk 'Java-21'
-        maven 'Maven-3.9.11'
+  tools {
+    jdk 'Java-21'           // must match your Global Tool name
+    maven 'Maven-3.9.11'    // must match your Global Tool name
+  }
+
+  environment {
+    PROJECT_ID   = 'internal-sandbox-446612'              // <-- replace
+    REGION       = 'us-central1'
+    REPO         = 'apps'                         // artifact registry repo name
+    IMAGE_NAME   = "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/simple-java-app"
+    IMAGE_TAG    = "${env.BUILD_NUMBER}"
+    K8S_DIR      = 'k8s'
+    PATH         = "/google-cloud-sdk/bin:/usr/bin:${env.PATH}"
+  }
+
+  stages {
+    stage('Clean') {
+      steps { deleteDir() }
     }
 
-    environment {
-    PROJECT_ID      = 'internal-sandbox-446612'
-    REPOSITORY_NAME = 'simple-java-maven-app'
-    IMAGE_NAME      = "gcr.io/${PROJECT_ID}/${REPOSITORY_NAME}"
-    IMAGE_TAG       = "${env.BUILD_NUMBER}"
-    CLUSTER_NAME    = 'simple-cluster'
-    CLUSTER_ZONE    = 'us-central1-a'
-    PATH            = "/google-cloud-sdk/bin:/usr/bin:${env.PATH}"
-}
-
-
-    stages {
-        stage('Clean Workspace') {
-            steps {
-                echo '🧹 Cleaning workspace...'
-                deleteDir()
-            }
-        }
-
-        stage('Checkout Source Code') {
-            steps {
-                echo '📦 Checking out source code...'
-                git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
-            }
-        }
-
-        stage('Clean Maven Repo') {
-            steps {
-                echo '🗑 Clearing local Maven repo cache...'
-                sh 'rm -rf ~/.m2/repository/*'
-            }
-        }
-
-        stage('Build with Maven') {
-    steps {
-        sh 'mvn -B clean package -DskipTests -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit'
+    stage('Checkout') {
+      steps {
+        git url: 'https://github.com/<your-username>/<your-repo>.git', branch: 'master' // <-- replace
+      }
     }
-}
 
-stage('Run Unit Tests') {
-    steps {
-        sh 'mvn test -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStorePassword=changeit'
+    stage('Build & Test (Maven)') {
+      steps {
+        sh 'mvn -B clean test'
         junit '**/target/surefire-reports/*.xml'
-    }
-}
-
-
-        stage('Build & Push Docker Image') {
-            steps {
-                echo '🐳 Building and pushing Docker image to GCR...'
-                withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
-                    sh '''
-                        gcloud auth activate-service-account --key-file=$GCLOUD_KEY
-                        gcloud auth configure-docker gcr.io -q
-                        docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
-                        docker push $IMAGE_NAME:$IMAGE_TAG
-                        docker push $IMAGE_NAME:latest
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy to GKE') {
-            steps {
-                echo '🚀 Deploying application to GKE...'
-                withCredentials([file(credentialsId: 'gcr-sa-json', variable: 'GCLOUD_KEY')]) {
-                    sh '''
-                        gcloud auth activate-service-account --key-file=$GCLOUD_KEY
-                        gcloud config set project $PROJECT_ID
-                        gcloud container clusters get-credentials $CLUSTER_NAME --zone $CLUSTER_ZONE --project $PROJECT_ID
-
-                        kubectl apply -f k8s/deployment.yaml
-                        kubectl apply -f k8s/service.yaml
-                    '''
-                }
-            }
-        }
+      }
     }
 
-    post {
-        success {
-            echo '✅ Pipeline completed successfully and app deployed on GKE!'
-        }
-        failure {
-            echo '❌ Build, test, or deploy stage failed!'
-        }
+    stage('Verify CLIs (optional)') {
+      steps {
+        // these will show in logs; helpful for debugging
+        sh 'which gcloud || echo "gcloud missing"'
+        sh 'which kubectl || echo "kubectl missing"'
+        sh 'gcloud --version || true'
+        sh 'kubectl version --client || true'
+      }
     }
+
+    stage('Build & Push Image (Cloud Build)') {
+      steps {
+        // Workload Identity handles auth — no JSON key
+        sh """
+          gcloud config set project ${PROJECT_ID}
+          gcloud builds submit --tag ${IMAGE_NAME}:${IMAGE_TAG} .
+          gcloud container images add-tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest -q || true
+        """
+      }
+    }
+
+    stage('Deploy to GKE') {
+      steps {
+        sh """
+          # Ensure kubectl is configured in-pod via Workload Identity (no keyfile)
+          kubectl apply -f ${K8S_DIR}/deployment.yaml
+          kubectl apply -f ${K8S_DIR}/service.yaml
+        """
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ Build+Push+Deploy succeeded' }
+    failure { echo '❌ Check console logs' }
+  }
 }
