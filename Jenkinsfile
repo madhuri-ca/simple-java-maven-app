@@ -20,24 +20,37 @@ spec:
 """
     }
   }
+
+  environment {
+    PROJECT_ID = "internal-sandbox-446612"   // 🔹 set your project id here
+    REGION = "us-central1"
+    REPO = "jenkins-repo"
+    IMAGE = "simple-java-app"
+  }
+
   stages {
     stage('Checkout') {
       steps {
         checkout scm
       }
     }
+
     stage('Build & Push Image (Cloud Build)') {
       steps {
         container('cloud-sdk') {
           sh '''
+            echo "Using project: $PROJECT_ID"
+            gcloud config set project $PROJECT_ID
+
             gcloud builds submit \
               --project=$PROJECT_ID \
-              --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+              --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
               .
           '''
         }
       }
     }
+
     stage('Deploy to GKE') {
       steps {
         container('cloud-sdk') {
