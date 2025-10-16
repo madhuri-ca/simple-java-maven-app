@@ -16,7 +16,6 @@ spec:
     spec:
       containers:
       - name: simple-java-app
-        # Jenkins pipeline will update this image tag
-        image: us-central1-docker.pkg.dev/YOUR_PROJECT_ID/jenkins-repo/simple-java-app:latest
+        image: us-central1-docker.pkg.dev/internal-sandbox-446612/jenkins-repo/simple-java-app:latest
         ports:
         - containerPort: 8080
