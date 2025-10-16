@@ -77,21 +77,19 @@ spec:
 
 
     stage('Deploy to GKE') {
-      steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Authenticating to GKE..."
-            gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
+  steps {
+    container('cloud-sdk') {
+      sh '''
+        echo "Authenticating to GKE..."
+        gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
 
-            echo "Deploying to Kubernetes..."
-            kubectl apply -f k8s/deployment.yaml
-            kubectl apply -f k8s/service.yaml
+        echo "Updating image with current build number..."
+        kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
 
-            echo "Waiting for rollout to finish..."
-            kubectl rollout status deployment/simple-java-app
-          '''
-        }
-      }
+        echo "Waiting for rollout..."
+        kubectl rollout status deployment/simple-java-app
+      '''
     }
   }
 }
+
