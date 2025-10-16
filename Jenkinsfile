@@ -1,79 +1,84 @@
 pipeline {
-  agent any
-
-  tools {
-    jdk 'JDK'              // must match your Jenkins Global Tool name
-    maven 'Maven-3.9.11'   // must match your Jenkins Global Tool name
-  }
+  agent none
 
   environment {
-    PROJECT_ID = 'internal-sandbox-446612'
-    REGION     = 'us-central1'
-    REPO       = 'apps'
-    IMAGE_NAME = "us-central1-docker.pkg.dev/${PROJECT_ID}/${REPO}/simple-java-app"
-    IMAGE_TAG  = "${env.BUILD_NUMBER}"
-    K8S_DIR    = 'k8s'
-    PATH       = "/google-cloud-sdk/bin:/usr/bin:${env.PATH}"
+    PROJECT_ID   = 'internal-sandbox-446612'   // your project ID
+    REGION       = 'us-central1'
+    REPO         = 'jenkins-repo'
+    IMAGE_NAME   = 'simple-java-app'
+    AR_IMAGE     = "${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE_NAME}"
   }
 
   stages {
-    stage('Clean') {
-      steps { deleteDir() }
-    }
-
     stage('Checkout') {
+      agent any
       steps {
-        git url: 'https://github.com/madhuri-ca/simple-java-maven-app.git', branch: 'master'
+        checkout scm
       }
     }
 
-    stage('Build & Test (Maven)') {
-      steps {
-        sh 'mvn -B clean test'
-        junit '**/target/surefire-reports/*.xml'
+    stage('Build & Push (Cloud Build)') {
+      agent {
+        kubernetes {
+          yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: cloud-sdk
+    image: google/cloud-sdk:slim
+    command: ['cat']
+    tty: true
+"""
+        }
       }
-    }
-
-    stage('Verify CLIs (optional)') {
-      steps {
-        sh 'which gcloud || echo "gcloud missing"'
-        sh 'which kubectl || echo "kubectl missing"'
-        sh 'gcloud --version || true'
-        sh 'kubectl version --client || true'
-      }
-    }
-        stage('Verify GCP Identity') {
       steps {
         sh '''
-          echo "Checking active GCP identity..."
-          gcloud auth list
-          gcloud config list account
+          echo "Submitting build to Cloud Build..."
+          gcloud builds submit \
+            --project="${PROJECT_ID}" \
+            --tag "${AR_IMAGE}:${BUILD_NUMBER}" .
+
+          gcloud artifacts docker tags add \
+            "${AR_IMAGE}:${BUILD_NUMBER}" "${AR_IMAGE}:latest" || true
         '''
       }
     }
 
-    stage('Build & Push Image (Cloud Build)') {
-      steps {
-        sh """
-          echo "Building & pushing image with Google Cloud Build..."
-          gcloud builds submit --tag ${IMAGE_NAME}:${IMAGE_TAG} .
-        """
-      }
-    }
-
     stage('Deploy to GKE') {
+      agent {
+        kubernetes {
+          yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: cloud-sdk
+    image: google/cloud-sdk:slim
+    command: ['cat']
+    tty: true
+"""
+        }
+      }
       steps {
-        sh """
+        sh '''
           echo "Deploying to GKE..."
-          kubectl apply -f ${K8S_DIR}/deployment.yaml
-          kubectl apply -f ${K8S_DIR}/service.yaml
-        """
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+          kubectl set image deployment/simple-java-app \
+            simple-java-app=${AR_IMAGE}:${BUILD_NUMBER}
+
+          kubectl rollout status deployment/simple-java-app
+        '''
       }
     }
   }
 
   post {
-    success { echo '✅ Build+Push+Deploy succeeded' }
-    failure { echo '❌ Check console logs' }
+    success { echo "✅ Pipeline finished successfully." }
+    failure { echo "❌ Pipeline failed. Check logs." }
   }
 }
