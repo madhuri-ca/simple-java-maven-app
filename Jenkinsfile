@@ -13,7 +13,7 @@ spec:
     - cat
     tty: true
   - name: cloud-sdk
-    image: google/cloud-sdk:slim
+    image: google/cloud-sdk:latest   # ✅ use full image with kubectl included
     command:
     - cat
     tty: true
@@ -22,10 +22,12 @@ spec:
   }
 
   environment {
-    PROJECT_ID = "internal-sandbox-446612"   // 🔹 set your project id here
-    REGION = "us-central1"
-    REPO = "jenkins-repo"
-    IMAGE = "simple-java-app"
+    PROJECT_ID = "internal-sandbox-446612"   // 🔹 your project id
+    REGION     = "us-central1"
+    CLUSTER    = "your-gke-cluster-name"     // 🔹 replace with your cluster name
+    ZONE       = "us-central1-a"             // 🔹 or your GKE zone
+    REPO       = "jenkins-repo"
+    IMAGE      = "simple-java-app"
   }
 
   stages {
@@ -36,24 +38,30 @@ spec:
     }
 
     stage('Build & Push Image (Cloud Build)') {
-  steps {
-    container('cloud-sdk') {
-      sh '''
-        echo "Submitting build to Cloud Build (async)..."
-        gcloud builds submit \
-          --project=$PROJECT_ID \
-          --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
-          --async .
-      '''
+      steps {
+        container('cloud-sdk') {
+          sh '''
+            echo "Submitting build to Cloud Build (async)..."
+            gcloud builds submit \
+              --project=$PROJECT_ID \
+              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
+              --async .
+          '''
+        }
+      }
     }
-  }
-}
 
     stage('Deploy to GKE') {
       steps {
         container('cloud-sdk') {
-          sh "kubectl apply -f k8s/deployment.yaml"
-          sh "kubectl apply -f k8s/service.yaml"
+          sh '''
+            echo "Authenticating to GKE..."
+            gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
+
+            echo "Deploying to GKE..."
+            kubectl apply -f k8s/deployment.yaml
+            kubectl apply -f k8s/service.yaml
+          '''
         }
       }
     }
