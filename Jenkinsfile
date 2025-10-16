@@ -65,12 +65,12 @@ spec:
       steps {
         container('cloud-sdk') {
           sh '''
-            echo "Submitting build to Cloud Build..."
-            gcloud builds submit \
-              --project=$PROJECT_ID \
-              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
-              .
-          '''
+  gcloud builds submit \
+    --project=$PROJECT_ID \
+    --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
+    --no-stream .
+'''
+
         }
       }
     }
