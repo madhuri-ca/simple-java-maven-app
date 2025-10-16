@@ -3,7 +3,7 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            agent { label 'default' }   // run on Jenkins default agent
+            agent { label 'default' }
             steps {
                 checkout scm
             }
@@ -28,14 +28,16 @@ spec:
             }
             steps {
                 container('cloud-sdk') {
-                    sh '''
-  echo "Submitting build to Cloud Build (no-stream)..."
-  gcloud builds submit \
-    --project=$PROJECT_ID \
-    --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
-    --no-stream .
-'''
-
+                    // Add timeout + no-stream
+                    timeout(time: 10, unit: 'MINUTES') {
+                        sh '''
+                          echo "Submitting build to Cloud Build (no-stream)..."
+                          gcloud builds submit \
+                            --project=$PROJECT_ID \
+                            --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+                            --no-stream .
+                        '''
+                    }
                 }
             }
         }
