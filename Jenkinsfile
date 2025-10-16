@@ -27,7 +27,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: maven
-    image: maven:3.9.6-eclipse-temurin-21
+    image: maven:3.9.9-eclipse-temurin-21
     command: ['cat']
     tty: true
 """
@@ -50,7 +50,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: maven
-    image: maven:3.9.6-eclipse-temurin-21
+    image: maven:3.9.9-eclipse-temurin-21
     command: ['cat']
     tty: true
 """
