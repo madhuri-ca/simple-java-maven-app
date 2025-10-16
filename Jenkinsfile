@@ -52,18 +52,14 @@ spec:
     }
 
     stage('Deploy to GKE') {
-      steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Authenticating to GKE..."
-            gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
-
-            echo "Deploying to GKE..."
-            kubectl apply -f k8s/deployment.yaml
-            kubectl apply -f k8s/service.yaml
-          '''
-        }
-      }
+  steps {
+    container('cloud-sdk') {
+      sh '''
+        echo "Authenticating to GKE..."
+        gcloud container clusters get-credentials jenkins-cluster --zone us-central1-a --project=$PROJECT_ID
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+      '''
     }
   }
 }
