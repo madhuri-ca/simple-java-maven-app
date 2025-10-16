@@ -1,25 +1,13 @@
-# ---------- Build Stage ----------
+# Build stage
 FROM maven:3.9.9-eclipse-temurin-21 AS builder
-
-# Set working directory
 WORKDIR /app
-
-# Copy pom.xml and download dependencies
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-# Copy source code and build
+RUN mvn -B dependency:go-offline
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN mvn -B clean package -DskipTests
 
-# ---------- Runtime Stage ----------
+# Runtime stage
 FROM eclipse-temurin:21-jre
-
-# Set working directory
 WORKDIR /app
-
-# Copy only the built JAR from builder stage
-COPY --from=builder /app/target/my-app-1.0-SNAPSHOT.jar app.jar
-
-# Run the JAR
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY --from=builder /app/target/*SNAPSHOT*.jar app.jar
+ENTRYPOINT ["java","-jar","app.jar"]
