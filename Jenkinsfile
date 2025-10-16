@@ -36,20 +36,18 @@ spec:
     }
 
     stage('Build & Push Image (Cloud Build)') {
-      steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Using project: $PROJECT_ID"
-            gcloud config set project $PROJECT_ID
-
-            gcloud builds submit \
-              --project=$PROJECT_ID \
-              --tag $REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
-              .
-          '''
-        }
-      }
+  steps {
+    container('cloud-sdk') {
+      sh '''
+        echo "Submitting build to Cloud Build (async)..."
+        gcloud builds submit \
+          --project=$PROJECT_ID \
+          --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+          --async .
+      '''
     }
+  }
+}
 
     stage('Deploy to GKE') {
       steps {
