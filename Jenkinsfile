@@ -29,12 +29,13 @@ spec:
             steps {
                 container('cloud-sdk') {
                     sh '''
-                      echo "Submitting build to Cloud Build..."
-                      gcloud builds submit \
-                        --project=$PROJECT_ID \
-                        --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
-                        .
-                    '''
+  echo "Submitting build to Cloud Build (no-stream)..."
+  gcloud builds submit \
+    --project=$PROJECT_ID \
+    --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+    --no-stream .
+'''
+
                 }
             }
         }
