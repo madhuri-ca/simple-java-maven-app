@@ -1,58 +1,50 @@
 pipeline {
-    agent none   // no global agent
-
-    stages {
-        stage('Checkout') {
-            agent { label 'default' }
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Build & Push Image (Cloud Build)') {
-    agent {
-        kubernetes {
-            yaml """
+  agent {
+    kubernetes {
+      yaml """
 apiVersion: v1
 kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
+  - name: maven
+    image: maven:3.9.6-eclipse-temurin-21
+    command:
+    - cat
+    tty: true
   - name: cloud-sdk
     image: google/cloud-sdk:slim
     command:
     - cat
     tty: true
 """
-        }
     }
-    steps {
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    stage('Build & Push Image (Cloud Build)') {
+      steps {
         container('cloud-sdk') {
-            timeout(time: 15, unit: 'MINUTES') {
-                sh '''
-                  echo "Submitting build to Cloud Build (async)..."
-                  BUILD_ID=$(gcloud builds submit \
-                    --project=$PROJECT_ID \
-                    --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
-                    --format='value(id)' --async .)
-
-                  echo "Submitted Build ID: $BUILD_ID"
-
-                  echo "Waiting for build to finish..."
-                  gcloud builds wait $BUILD_ID --project=$PROJECT_ID
-                '''
-            }
+          sh '''
+            gcloud builds submit \
+              --project=$PROJECT_ID \
+              --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+              .
+          '''
         }
+      }
     }
-}
-
-
-        stage('Deploy to GKE') {
-            agent { label 'default' }
-            steps {
-                sh "kubectl apply -f k8s/deployment.yaml"
-                sh "kubectl apply -f k8s/service.yaml"
-            }
+    stage('Deploy to GKE') {
+      steps {
+        container('cloud-sdk') {
+          sh "kubectl apply -f k8s/deployment.yaml"
+          sh "kubectl apply -f k8s/service.yaml"
         }
+      }
     }
+  }
 }
