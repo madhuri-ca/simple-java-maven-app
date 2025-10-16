@@ -17,54 +17,7 @@ pipeline {
       }
     }
 
-    stage('Build with Maven (Java 21)') {
-      agent {
-        kubernetes {
-          yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins
-  containers:
-  - name: maven
-    image: maven:3.9.9-eclipse-temurin-21
-    command: ['cat']
-    tty: true
-"""
-        }
-      }
-      steps {
-        container('maven') {
-          sh 'mvn clean package -DskipTests'
-        }
-      }
-    }
-
-    stage('Unit Tests') {
-      agent {
-        kubernetes {
-          yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins
-  containers:
-  - name: maven
-    image: maven:3.9.9-eclipse-temurin-21
-    command: ['cat']
-    tty: true
-"""
-        }
-      }
-      steps {
-        container('maven') {
-          sh 'mvn test'
-          junit '**/target/surefire-reports/*.xml'
-        }
-      }
-    }
-
-       stage('Build & Push Image (Cloud Build)') {
+    stage('Build & Push Image (Cloud Build)') {
       agent {
         kubernetes {
           yaml """
@@ -81,56 +34,13 @@ spec:
         }
       }
       steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Submitting build to Cloud Build..."
-            gcloud builds submit \
-              --project="${PROJECT_ID}" \
-              --tag "${AR_IMAGE}:${BUILD_NUMBER}" .
-
-            echo "Tagging latest..."
-            gcloud artifacts docker tags add \
-              "${AR_IMAGE}:${BUILD_NUMBER}" "${AR_IMAGE}:latest" || true
-          '''
-        }
-      }
-    }
-
-
-    stage('Push to Artifact Registry') {
-      agent {
-        kubernetes {
-          yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins
-  containers:
-  - name: docker
-    image: gcr.io/cloud-builders/docker
-    command: ['cat']
-    tty: true
-  - name: cloud-sdk
-    image: google/cloud-sdk:slim
-    command: ['cat']
-    tty: true
-"""
-        }
-      }
-      steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Authenticating and pushing image..."
-            gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
-          '''
-        }
-        container('docker') {
-          sh '''
-            docker push ${AR_IMAGE}:${BUILD_NUMBER}
-            docker tag ${AR_IMAGE}:${BUILD_NUMBER} ${AR_IMAGE}:latest
-            docker push ${AR_IMAGE}:latest
-          '''
-        }
+        sh '''
+          echo "Submitting build to Cloud Build with DEBUG logs..."
+          gcloud builds submit \
+            --project="${PROJECT_ID}" \
+            --tag "${AR_IMAGE}:${BUILD_NUMBER}" \
+            --verbosity=debug .
+        '''
       }
     }
 
@@ -151,28 +61,18 @@ spec:
         }
       }
       steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Deploying to GKE..."
-            kubectl apply -f k8s/deployment.yaml
-            kubectl apply -f k8s/service.yaml
-
-            kubectl set image deployment/simple-java-app \
-              simple-java-app=${AR_IMAGE}:${BUILD_NUMBER}
-
-            kubectl rollout status deployment/simple-java-app
-          '''
-        }
+        sh '''
+          echo "Deploying to GKE..."
+          kubectl set image deployment/simple-java-app \
+            simple-java-app=${AR_IMAGE}:${BUILD_NUMBER}
+          kubectl rollout status deployment/simple-java-app
+        '''
       }
     }
   }
 
   post {
-    success {
-      echo "✅ Pipeline finished successfully."
-    }
-    failure {
-      echo "❌ Pipeline failed. Check logs."
-    }
+    success { echo "✅ Pipeline finished successfully." }
+    failure { echo "❌ Pipeline failed. Check logs." }
   }
 }
