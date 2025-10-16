@@ -45,7 +45,7 @@ pipeline {
       }
     }
 
-        stage('Build & Push Image') {
+            stage('Build & Push Image') {
       steps {
         sh '''
           echo "Building & pushing image with Cloud Build..."
@@ -53,6 +53,7 @@ pipeline {
         '''
       }
     }
+
 
 
 
