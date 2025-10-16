@@ -42,6 +42,15 @@ pipeline {
         sh 'kubectl version --client || true'
       }
     }
+        stage('Verify GCP Identity') {
+      steps {
+        sh '''
+          echo "Checking active GCP identity..."
+          gcloud auth list
+          gcloud config list account
+        '''
+      }
+    }
 
     stage('Build & Push Image (Cloud Build)') {
       steps {
