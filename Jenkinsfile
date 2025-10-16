@@ -64,7 +64,7 @@ spec:
       }
     }
 
-    stage('Build Docker Image') {
+       stage('Build & Push Image (Cloud Build)') {
       agent {
         kubernetes {
           yaml """
@@ -73,22 +73,29 @@ kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
-  - name: docker
-    image: gcr.io/cloud-builders/docker
+  - name: cloud-sdk
+    image: google/cloud-sdk:slim
     command: ['cat']
     tty: true
 """
         }
       }
       steps {
-        container('docker') {
+        container('cloud-sdk') {
           sh '''
-            echo "Building Docker image..."
-            docker build -t ${AR_IMAGE}:${BUILD_NUMBER} .
+            echo "Submitting build to Cloud Build..."
+            gcloud builds submit \
+              --project="${PROJECT_ID}" \
+              --tag "${AR_IMAGE}:${BUILD_NUMBER}" .
+
+            echo "Tagging latest..."
+            gcloud artifacts docker tags add \
+              "${AR_IMAGE}:${BUILD_NUMBER}" "${AR_IMAGE}:latest" || true
           '''
         }
       }
     }
+
 
     stage('Push to Artifact Registry') {
       agent {
