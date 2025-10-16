@@ -45,16 +45,19 @@ pipeline {
       }
     }
 
-    stage('Build & Push Image (Cloud Build)') {
-      steps {
-        // Workload Identity handles auth — no JSON key
-        sh """
-          gcloud config set project ${PROJECT_ID}
-          gcloud builds submit --tag ${IMAGE_NAME}:${IMAGE_TAG} .
-          gcloud container images add-tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest -q || true
-        """
-      }
+    stage('Build & Push Image') {
+    steps {
+        withEnv(["IMAGE=us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER}"]) {
+            sh '''
+              echo "Building Docker image..."
+              docker build -t $IMAGE .
+              echo "Pushing Docker image..."
+              docker push $IMAGE
+            '''
+        }
     }
+}
+
 
     stage('Deploy to GKE') {
       steps {
