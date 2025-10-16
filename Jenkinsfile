@@ -45,14 +45,16 @@ pipeline {
       }
     }
 
-            stage('Build & Push Image') {
-      steps {
-        sh '''
-          echo "Building & pushing image with Cloud Build..."
-          gcloud builds submit --tag us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER} .
-        '''
-      }
-    }
+    stage('Build & Push Image') {
+  steps {
+    sh '''
+      echo "Building Docker image directly..."
+      docker build -t us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER} .
+      docker push us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER}
+    '''
+  }
+}
+
 
 
 
