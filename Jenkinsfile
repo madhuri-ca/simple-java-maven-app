@@ -17,33 +17,18 @@ pipeline {
       }
     }
 
-    stage('Build & Push Image (Cloud Build)') {
-  agent {
-    kubernetes {
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins
-  containers:
-  - name: cloud-sdk
-    image: google/cloud-sdk:slim
-    command: ['cat']
-    tty: true
-"""
+ stage('Build & Push Image (Cloud Build)') {
+    steps {
+        container('cloud-sdk') {
+            sh '''
+              echo "Submitting build to Cloud Build..."
+              gcloud builds submit \
+                --project=$PROJECT_ID \
+                --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+                --no-source
+            '''
+        }
     }
-  }
-  steps {
-    container('cloud-sdk') {
-      sh '''
-        echo "Submitting build to Cloud Build with DEBUG logs..."
-        gcloud builds submit \
-          --project="${PROJECT_ID}" \
-          --tag "${AR_IMAGE}:${BUILD_NUMBER}" \
-          --verbosity=debug .
-      '''
-    }
-  }
 }
 
 
