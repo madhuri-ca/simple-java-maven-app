@@ -10,9 +10,9 @@ pipeline {
         }
 
         stage('Build & Push Image (Cloud Build)') {
-            agent {
-                kubernetes {
-                    yaml """
+    agent {
+        kubernetes {
+            yaml """
 apiVersion: v1
 kind: Pod
 spec:
@@ -24,23 +24,28 @@ spec:
     - cat
     tty: true
 """
-                }
-            }
-            steps {
-                container('cloud-sdk') {
-                    // Add timeout + no-stream
-                    timeout(time: 10, unit: 'MINUTES') {
-                        sh '''
-                          echo "Submitting build to Cloud Build (no-stream)..."
-                          gcloud builds submit \
-                            --project=$PROJECT_ID \
-                            --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
-                            --no-stream .
-                        '''
-                    }
-                }
+        }
+    }
+    steps {
+        container('cloud-sdk') {
+            timeout(time: 15, unit: 'MINUTES') {
+                sh '''
+                  echo "Submitting build to Cloud Build (async)..."
+                  BUILD_ID=$(gcloud builds submit \
+                    --project=$PROJECT_ID \
+                    --tag us-central1-docker.pkg.dev/$PROJECT_ID/jenkins-repo/simple-java-app:$BUILD_NUMBER \
+                    --format='value(id)' --async .)
+
+                  echo "Submitted Build ID: $BUILD_ID"
+
+                  echo "Waiting for build to finish..."
+                  gcloud builds wait $BUILD_ID --project=$PROJECT_ID
+                '''
             }
         }
+    }
+}
+
 
         stage('Deploy to GKE') {
             agent { label 'default' }
