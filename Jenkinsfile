@@ -18,9 +18,9 @@ pipeline {
     }
 
     stage('Build & Push Image (Cloud Build)') {
-      agent {
-        kubernetes {
-          yaml """
+  agent {
+    kubernetes {
+      yaml """
 apiVersion: v1
 kind: Pod
 spec:
@@ -31,18 +31,21 @@ spec:
     command: ['cat']
     tty: true
 """
-        }
-      }
-      steps {
-        sh '''
-          echo "Submitting build to Cloud Build with DEBUG logs..."
-          gcloud builds submit \
-            --project="${PROJECT_ID}" \
-            --tag "${AR_IMAGE}:${BUILD_NUMBER}" \
-            --verbosity=debug .
-        '''
-      }
     }
+  }
+  steps {
+    container('cloud-sdk') {
+      sh '''
+        echo "Submitting build to Cloud Build with DEBUG logs..."
+        gcloud builds submit \
+          --project="${PROJECT_ID}" \
+          --tag "${AR_IMAGE}:${BUILD_NUMBER}" \
+          --verbosity=debug .
+      '''
+    }
+  }
+}
+
 
     stage('Deploy to GKE') {
       agent {
