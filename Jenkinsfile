@@ -45,18 +45,15 @@ pipeline {
       }
     }
 
-    stage('Build & Push Image') {
-    steps {
-        withEnv(["IMAGE=us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER}"]) {
-            sh '''
-              echo "Building Docker image..."
-              docker build -t $IMAGE .
-              echo "Pushing Docker image..."
-              docker push $IMAGE
-            '''
-        }
+        stage('Build & Push Image') {
+      steps {
+        sh '''
+          echo "Building & pushing image with Cloud Build..."
+          gcloud builds submit --tag us-central1-docker.pkg.dev/internal-sandbox-446612/apps/simple-java-app:${BUILD_NUMBER} .
+        '''
+      }
     }
-}
+
 
 
     stage('Deploy to GKE') {
