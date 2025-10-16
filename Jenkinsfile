@@ -13,7 +13,7 @@ spec:
     - cat
     tty: true
   - name: cloud-sdk
-    image: google/cloud-sdk:latest   # includes gcloud + kubectl
+    image: google/cloud-sdk:latest
     command:
     - cat
     tty: true
@@ -22,10 +22,10 @@ spec:
   }
 
   environment {
-    PROJECT_ID = "internal-sandbox-446612"    // 🔹 your GCP project ID
+    PROJECT_ID = "internal-sandbox-446612"
     REGION     = "us-central1"
-    CLUSTER    = "jenkins-cluster"            // 🔹 your cluster name
-    ZONE       = "us-central1-a"              // 🔹 your cluster zone
+    CLUSTER    = "jenkins-cluster"
+    ZONE       = "us-central1-a"
     REPO       = "jenkins-repo"
     IMAGE      = "simple-java-app"
   }
@@ -40,7 +40,7 @@ spec:
     stage('Build (Maven)') {
       steps {
         container('maven') {
-          sh 'mvn clean compile'
+          sh 'mvn clean install -DskipTests'
         }
       }
     }
@@ -62,34 +62,33 @@ spec:
     }
 
     stage('Build & Push Image (Cloud Build)') {
-  steps {
-    container('cloud-sdk') {
-      sh '''
-        echo "Submitting build to Cloud Build..."
-        gcloud builds submit \
-          --project=$PROJECT_ID \
-          --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
-          .
-      '''
+      steps {
+        container('cloud-sdk') {
+          sh '''
+            echo "Submitting build to Cloud Build..."
+            gcloud builds submit \
+              --project=$PROJECT_ID \
+              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER .
+          '''
+        }
+      }
     }
-  }
-}
-
 
     stage('Deploy to GKE') {
-  steps {
-    container('cloud-sdk') {
-      sh '''
-        echo "Authenticating to GKE..."
-        gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
+      steps {
+        container('cloud-sdk') {
+          sh '''
+            echo "Authenticating to GKE..."
+            gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
+            
+            echo "Updating image in deployment..."
+            kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
 
-        echo "Updating image with current build number..."
-        kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
-
-        echo "Waiting for rollout..."
-        kubectl rollout status deployment/simple-java-app
-      '''
+            echo "Waiting for rollout..."
+            kubectl rollout status deployment/simple-java-app
+          '''
+        }
+      }
     }
   }
 }
-
