@@ -99,7 +99,7 @@ spec:
             def externalIP = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
 
             if (!externalIP) {
-              error("❌ Could not fetch External IP for simple-java-service. Check if service type is LoadBalancer.")
+              error("Could not fetch External IP for simple-java-service. Check if service type is LoadBalancer.")
             }
 
             def appUrl = "http://${externalIP}:80"
@@ -108,9 +108,9 @@ spec:
             def statusCode = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${appUrl}", returnStdout: true).trim()
 
             if (statusCode != "200") {
-              error("❌ Health check failed. Got status code: ${statusCode}")
+              error("Health check failed. Got status code: ${statusCode}")
             } else {
-              echo "✅ Health check passed with 200 OK"
+              echo "Health check passed with 200 OK"
             }
           }
         }
@@ -124,7 +124,7 @@ spec:
       steps {
         container('cloud-sdk') {
           sh '''
-            echo "⚠️ Rolling back deployment..."
+            echo "Rolling back deployment..."
             kubectl rollout undo deployment/simple-java-app
           '''
         }
