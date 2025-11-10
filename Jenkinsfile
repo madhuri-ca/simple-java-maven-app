@@ -65,16 +65,34 @@ spec:
   steps {
     container('cloud-sdk') {
       sh '''
+        set -e
         gcloud config set project $PROJECT_ID
-        gcloud auth list
-        echo "Submitting build to Cloud Build..."
-        gcloud builds submit \
+        echo "Submitting build (async) to Cloud Build..."
+        BUILD_ID=$(gcloud builds submit \
           --project=$PROJECT_ID \
-          --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER .
+          --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
+          --async \
+          --format='value(id)' .)
+
+        echo "Build ID: $BUILD_ID"
+        # Poll until the build completes; do NOT stream logs
+        while true; do
+          STATUS=$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')
+          echo "Cloud Build status: $STATUS"
+          if [ "$STATUS" = "SUCCESS" ]; then
+            echo "Cloud Build finished successfully."
+            break
+          elif [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "EXPIRED" ]; then
+            echo "Cloud Build ended with status: $STATUS"
+            exit 1
+          fi
+          sleep 5
+        done
       '''
     }
   }
 }
+
 
     stage('Deploy to GKE') {
       steps {
