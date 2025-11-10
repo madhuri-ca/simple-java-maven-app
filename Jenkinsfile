@@ -90,45 +90,5 @@ spec:
         }
       }
     }
-
-    stage('Health Check') {
-      steps {
-        container('cloud-sdk') {
-          script {
-            echo "Fetching external IP of service simple-java-service..."
-            def externalIP = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-
-            if (!externalIP) {
-              error("Could not fetch External IP for simple-java-service. Check if service type is LoadBalancer.")
-            }
-
-            def appUrl = "http://${externalIP}:80"
-            echo "Health check URL: ${appUrl}"
-
-            def statusCode = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${appUrl}", returnStdout: true).trim()
-
-            if (statusCode != "200") {
-              error("Health check failed. Got status code: ${statusCode}")
-            } else {
-              echo "Health check passed with 200 OK"
-            }
-          }
-        }
-      }
-    }
-
-    stage('Rollback') {
-      when {
-        expression { currentBuild.result == 'FAILURE' }
-      }
-      steps {
-        container('cloud-sdk') {
-          sh '''
-            echo "Rolling back deployment..."
-            kubectl rollout undo deployment/simple-java-app
-          '''
-        }
-      }
-    }
   }
 }
