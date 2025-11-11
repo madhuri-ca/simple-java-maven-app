@@ -29,31 +29,38 @@ spec:
   }
 
   stages {
-
     stage('Checkout') {
       steps { checkout scm }
     }
 
     stage('Build (Maven)') {
-      steps { container('maven') { sh 'mvn clean install -DskipTests' } }
+      steps { container('maven') { sh 'mvn -B clean install -DskipTests' } }
     }
 
     stage('Test (Maven)') {
-      steps { container('maven') { sh 'mvn test' } }
+      steps { container('maven') { sh 'mvn -B test' } }
     }
 
     stage('Package (Maven)') {
-      steps { container('maven') { sh 'mvn package -DskipTests' } }
+      steps { container('maven') { sh 'mvn -B package -DskipTests' } }
     }
 
     stage('Build & Push Image (Cloud Build)') {
       steps {
         container('cloud-sdk') {
+          // keep it "short": your org blocks streaming, so we do async+poll silently
           sh '''
-            echo "Submitting build..."
-            gcloud builds submit \
+            set -e
+            gcloud config set project $PROJECT_ID
+            BUILD_ID=$(gcloud builds submit \
               --project=$PROJECT_ID \
-              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER .
+              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
+              --async --format='value(id)' .)
+            until [ "$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')" = "SUCCESS" ]; do
+              STATUS=$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')
+              [ "$STATUS" = "FAILURE" -o "$STATUS" = "CANCELLED" -o "$STATUS" = "EXPIRED" ] && exit 1
+              sleep 5
+            done
           '''
         }
       }
@@ -63,9 +70,10 @@ spec:
       steps {
         container('cloud-sdk') {
           sh '''
+            set -e
             gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
             kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
-            kubectl rollout status deployment/simple-java-app
+            kubectl rollout status deployment/simple-java-app --timeout=180s
           '''
         }
       }
@@ -76,11 +84,10 @@ spec:
         container('cloud-sdk') {
           script {
             def ip = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-            if (!ip) { error("External IP not assigned") }
-
+            if (!ip) error("No External IP yet for simple-java-service")
             def url = "http://${ip}:80"
-            def sc = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
-            if (sc != "200") { error("Health check failed: HTTP ${sc}") }
+            def code = sh(script: "curl -s --max-time 5 -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
+            if (code != "200") error("Health check failed, HTTP ${code}")
           }
         }
       }
@@ -90,7 +97,7 @@ spec:
       when { expression { currentBuild.result == 'FAILURE' } }
       steps {
         container('cloud-sdk') {
-          sh 'kubectl rollout undo deployment/simple-java-app'
+          sh 'kubectl rollout undo deployment/simple-java-app || true'
         }
       }
     }
@@ -98,23 +105,14 @@ spec:
 
   post {
     success {
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
-        sh '''
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"✅ SUCCESS: ${JOB_NAME} #${BUILD_NUMBER} deployed successfully\"}" \
-          $SLACK_WEBHOOK
-        '''
-      }
+      slackSend channel: '#ci-cd',
+        color: 'good',
+        message: "✅ *SUCCESS* ${env.JOB_NAME} #${env.BUILD_NUMBER}\nDeployed image `${env.IMAGE}:${env.BUILD_NUMBER}` and passed health checks.\n${env.BUILD_URL}"
     }
-
     failure {
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
-        sh '''
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"❌ FAILURE: ${JOB_NAME} #${BUILD_NUMBER} failed. Rollback executed.\"}" \
-          $SLACK_WEBHOOK
-        '''
-      }
+      slackSend channel: '#ci-cd',
+        color: 'danger',
+        message: "❌ *FAILED* ${env.JOB_NAME} #${env.BUILD_NUMBER}\nRollback attempted for `deployment/simple-java-app`.\n${env.BUILD_URL}"
     }
   }
 }
