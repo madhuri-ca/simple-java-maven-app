@@ -29,43 +29,29 @@ spec:
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout') { steps { checkout scm } }
 
-    stage('Build (Maven)') {
-      steps { container('maven') { sh 'mvn -B clean install -DskipTests' } }
-    }
-
-    stage('Test (Maven)') {
-      steps { container('maven') { sh 'mvn -B test' } }
-    }
-
-    stage('Package (Maven)') {
-      steps { container('maven') { sh 'mvn -B package -DskipTests' } }
-    }
+    stage('Build (Maven)')   { steps { container('maven') { sh 'mvn -B clean install -DskipTests' } } }
+    stage('Test (Maven)')    { steps { container('maven') { sh 'mvn -B test' } } }
+    stage('Package (Maven)') { steps { container('maven') { sh 'mvn -B package -DskipTests' } } }
 
     stage('Build & Push Image (Cloud Build)') {
       steps {
         container('cloud-sdk') {
-          // short & reliable (no log streaming): submit async and poll
+          // Org blocks streaming; do async + poll.
           sh '''
             set -e
-            gcloud config set project $PROJECT_ID
+            gcloud config set project "$PROJECT_ID" >/dev/null
             BUILD_ID=$(gcloud builds submit \
-              --project=$PROJECT_ID \
-              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
+              --project="$PROJECT_ID" \
+              --tag "us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER" \
               --async --format='value(id)' .)
 
-            # Poll until done
+            # Poll until SUCCESS/FAIL
             while true; do
-              STATUS=$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')
-              if [ "$STATUS" = "SUCCESS" ]; then
-                break
-              elif [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "EXPIRED" ]; then
-                echo "Cloud Build ended: $STATUS"
-                exit 1
-              fi
+              S=$(gcloud builds describe "$BUILD_ID" --project="$PROJECT_ID" --format='value(status)')
+              [ "$S" = "SUCCESS" ] && break
+              case "$S" in FAILURE|CANCELLED|EXPIRED) echo "Cloud Build status: $S"; exit 1;; esac
               sleep 5
             done
           '''
@@ -79,12 +65,9 @@ spec:
           sh '''
             set -e
             echo "Authenticating to GKE..."
-            gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
-
+            gcloud container clusters get-credentials "$CLUSTER" --zone "$ZONE" --project="$PROJECT_ID"
             echo "Updating image..."
-            kubectl set image deployment/simple-java-app \
-              simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
-
+            kubectl set image deployment/simple-java-app simple-java-app="us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER"
             echo "Waiting for rollout..."
             kubectl rollout status deployment/simple-java-app --timeout=180s
           '''
@@ -99,7 +82,7 @@ spec:
             def ip = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
             if (!ip) { error("No External IP yet for simple-java-service") }
             def url = "http://${ip}:80"
-            // quick probe
+            // Try once (matches your PDF); you can add retries later if you like
             def code = sh(script: "curl -s --max-time 5 -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
             if (code != "200") { error("Health check failed, HTTP ${code}") }
           }
@@ -111,32 +94,33 @@ spec:
       when { expression { currentBuild.result == 'FAILURE' } }
       steps {
         container('cloud-sdk') {
-          sh 'kubectl rollout undo deployment/simple-java-app || true'
+          sh 'echo "Rolling back..." && kubectl rollout undo deployment/simple-java-app || true'
         }
       }
     }
   }
 
+  // --- Slack notifications via Incoming Webhook (no plugin) ---
   post {
     success {
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+      withCredentials([string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK')]) {
         sh '''
-          curl -s -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"✅ *SUCCESS* ${JOB_NAME} #${BUILD_NUMBER}\\nImage: ${IMAGE}:${BUILD_NUMBER}\\n${BUILD_URL}\"}" \
-          "$SLACK_WEBHOOK" >/dev/null || true
+          set -e
+          MSG="✅ *SUCCESS* ${JOB_NAME} #${BUILD_NUMBER}%0AImage: `${IMAGE}:${BUILD_NUMBER}`%0A${BUILD_URL}"
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"${MSG}\"}" \
+            "$SLACK_WEBHOOK" >/dev/null
         '''
       }
     }
     failure {
-      // do a best-effort rollback again in post, just in case failure happened before rollback stage
-      container('cloud-sdk') {
-        sh 'kubectl rollout undo deployment/simple-java-app || true'
-      }
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+      withCredentials([string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK')]) {
         sh '''
-          curl -s -X POST -H 'Content-type: application/json' \
-          --data "{\"text\":\"❌ *FAILED* ${JOB_NAME} #${BUILD_NUMBER}\\nRollback attempted for deployment/simple-java-app\\n${BUILD_URL}\"}" \
-          "$SLACK_WEBHOOK" >/dev/null || true
+          set -e
+          MSG="❌ *FAILED* ${JOB_NAME} #${BUILD_NUMBER}%0ARollback attempted on \`deployment/simple-java-app\`.%0A${BUILD_URL}"
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"${MSG}\"}" \
+            "$SLACK_WEBHOOK" >/dev/null
         '''
       }
     }
