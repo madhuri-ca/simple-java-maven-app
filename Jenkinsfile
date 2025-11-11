@@ -106,23 +106,24 @@ spec:
   }
 
   post {
-    success {
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
-        sh '''
-          jq -cn --arg t "✅ SUCCESS: ${JOB_NAME} #${BUILD_NUMBER}\\nImage: ${IMAGE}:${BUILD_NUMBER}\\n${BUILD_URL}" \
-            '{text:$t}' | curl -s -X POST -H 'Content-type: application/json' \
-            --data @- "$SLACK_WEBHOOK" >/dev/null || true
-        '''
-      }
-    }
-    failure {
-      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
-        sh '''
-          jq -cn --arg t "❌ FAILED: ${JOB_NAME} #${BUILD_NUMBER}\\nRollback attempted on deployment/simple-java-app\\n${BUILD_URL}" \
-            '{text:$t}' | curl -s -X POST -H 'Content-type: application/json' \
-            --data @- "$SLACK_WEBHOOK" >/dev/null || true
-        '''
-      }
+  success {
+    withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+      sh '''
+        # Build a simple JSON payload without jq
+        payload=$(printf '{"text":"✅ SUCCESS: %s #%s\\nImage: %s:%s\\n%s"}' \
+                 "$JOB_NAME" "$BUILD_NUMBER" "$IMAGE" "$BUILD_NUMBER" "$BUILD_URL")
+        curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null
+      '''
     }
   }
+  failure {
+    withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+      sh '''
+        payload=$(printf '{"text":"❌ FAILED: %s #%s\\nRollback attempted on deployment/simple-java-app\\n%s"}' \
+                 "$JOB_NAME" "$BUILD_NUMBER" "$BUILD_URL")
+        curl -s -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK" >/dev/null
+      '''
+    }
+  }
+}
 }
