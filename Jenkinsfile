@@ -31,7 +31,7 @@ spec:
   stages {
     stage('Checkout')         { steps { checkout scm } }
     stage('Build (Maven)')    { steps { container('maven') { sh 'mvn -B clean install -DskipTests' } } }
-    stage('Test (Maven)')     { steps { container('maven') { sh '-B test' } } }
+    stage('Test (Maven)')     { steps { container('maven') { sh 'mvn -B test' } } }
     stage('Package (Maven)')  { steps { container('maven') { sh 'mvn -B package -DskipTests' } } }
 
     stage('Build & Push Image (Cloud Build)') {
