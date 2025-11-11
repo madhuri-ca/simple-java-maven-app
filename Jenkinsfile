@@ -48,7 +48,7 @@ spec:
     stage('Build & Push Image (Cloud Build)') {
       steps {
         container('cloud-sdk') {
-          // keep it "short": your org blocks streaming, so we do async+poll silently
+          // short & reliable (no log streaming): submit async and poll
           sh '''
             set -e
             gcloud config set project $PROJECT_ID
@@ -56,9 +56,16 @@ spec:
               --project=$PROJECT_ID \
               --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
               --async --format='value(id)' .)
-            until [ "$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')" = "SUCCESS" ]; do
+
+            # Poll until done
+            while true; do
               STATUS=$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')
-              [ "$STATUS" = "FAILURE" -o "$STATUS" = "CANCELLED" -o "$STATUS" = "EXPIRED" ] && exit 1
+              if [ "$STATUS" = "SUCCESS" ]; then
+                break
+              elif [ "$STATUS" = "FAILURE" ] || [ "$STATUS" = "CANCELLED" ] || [ "$STATUS" = "EXPIRED" ]; then
+                echo "Cloud Build ended: $STATUS"
+                exit 1
+              fi
               sleep 5
             done
           '''
@@ -71,8 +78,14 @@ spec:
         container('cloud-sdk') {
           sh '''
             set -e
+            echo "Authenticating to GKE..."
             gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
-            kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
+
+            echo "Updating image..."
+            kubectl set image deployment/simple-java-app \
+              simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
+
+            echo "Waiting for rollout..."
             kubectl rollout status deployment/simple-java-app --timeout=180s
           '''
         }
@@ -84,10 +97,11 @@ spec:
         container('cloud-sdk') {
           script {
             def ip = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-            if (!ip) error("No External IP yet for simple-java-service")
+            if (!ip) { error("No External IP yet for simple-java-service") }
             def url = "http://${ip}:80"
+            // quick probe
             def code = sh(script: "curl -s --max-time 5 -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
-            if (code != "200") error("Health check failed, HTTP ${code}")
+            if (code != "200") { error("Health check failed, HTTP ${code}") }
           }
         }
       }
@@ -105,14 +119,26 @@ spec:
 
   post {
     success {
-      slackSend channel: '#ci-cd',
-        color: 'good',
-        message: "✅ *SUCCESS* ${env.JOB_NAME} #${env.BUILD_NUMBER}\nDeployed image `${env.IMAGE}:${env.BUILD_NUMBER}` and passed health checks.\n${env.BUILD_URL}"
+      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+        sh '''
+          curl -s -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"✅ *SUCCESS* ${JOB_NAME} #${BUILD_NUMBER}\\nImage: ${IMAGE}:${BUILD_NUMBER}\\n${BUILD_URL}\"}" \
+          "$SLACK_WEBHOOK" >/dev/null || true
+        '''
+      }
     }
     failure {
-      slackSend channel: '#ci-cd',
-        color: 'danger',
-        message: "❌ *FAILED* ${env.JOB_NAME} #${env.BUILD_NUMBER}\nRollback attempted for `deployment/simple-java-app`.\n${env.BUILD_URL}"
+      // do a best-effort rollback again in post, just in case failure happened before rollback stage
+      container('cloud-sdk') {
+        sh 'kubectl rollout undo deployment/simple-java-app || true'
+      }
+      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+        sh '''
+          curl -s -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ *FAILED* ${JOB_NAME} #${BUILD_NUMBER}\\nRollback attempted for deployment/simple-java-app\\n${BUILD_URL}\"}" \
+          "$SLACK_WEBHOOK" >/dev/null || true
+        '''
+      }
     }
   }
 }
