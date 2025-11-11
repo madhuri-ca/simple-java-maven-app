@@ -29,31 +29,31 @@ spec:
   }
 
   stages {
-    stage('Checkout') { steps { checkout scm } }
 
-    stage('Build (Maven)') { steps { container('maven') { sh 'mvn -B clean install -DskipTests' } } }
-    stage('Test (Maven)')  { steps { container('maven') { sh 'mvn -B test' } } }
-    stage('Package (Maven)'){steps { container('maven') { sh 'mvn -B package -DskipTests' } } }
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Build (Maven)') {
+      steps { container('maven') { sh 'mvn clean install -DskipTests' } }
+    }
+
+    stage('Test (Maven)') {
+      steps { container('maven') { sh 'mvn test' } }
+    }
+
+    stage('Package (Maven)') {
+      steps { container('maven') { sh 'mvn package -DskipTests' } }
+    }
 
     stage('Build & Push Image (Cloud Build)') {
       steps {
         container('cloud-sdk') {
           sh '''
-            set -e
-            gcloud config set project $PROJECT_ID >/dev/null
-            # Submit without log streaming (org policy blocks streaming)
-            BUILD_ID=$(gcloud builds submit \
+            echo "Submitting build..."
+            gcloud builds submit \
               --project=$PROJECT_ID \
-              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER \
-              --async --format='value(id)' .)
-
-            # Poll status
-            while true; do
-              STATUS=$(gcloud builds describe "$BUILD_ID" --project=$PROJECT_ID --format='value(status)')
-              [ "$STATUS" = "SUCCESS" ] && break
-              case "$STATUS" in FAILURE|CANCELLED|EXPIRED) exit 1 ;; esac
-              sleep 5
-            done
+              --tag us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER .
           '''
         }
       }
@@ -63,11 +63,9 @@ spec:
       steps {
         container('cloud-sdk') {
           sh '''
-            set -e
             gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project=$PROJECT_ID
-            kubectl set image deployment/simple-java-app \
-              simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
-            kubectl rollout status deployment/simple-java-app --timeout=180s
+            kubectl set image deployment/simple-java-app simple-java-app=us-central1-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:$BUILD_NUMBER
+            kubectl rollout status deployment/simple-java-app
           '''
         }
       }
@@ -77,20 +75,12 @@ spec:
       steps {
         container('cloud-sdk') {
           script {
-            // Mark build FAILURE but keep going so Rollback stage can run.
-            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-              def ip = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
-              if (!ip) { error("No External IP yet for simple-java-service.") }
-              def url = "http://${ip}:80"
+            def ip = sh(script: "kubectl get svc simple-java-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+            if (!ip) { error("External IP not assigned") }
 
-              def ok = false
-              for (int i=0; i<10; i++) { // 50s max
-                def code = sh(script: "curl -s --max-time 5 -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
-                if (code == "200") { ok = true; break }
-                sleep 5
-              }
-              if (!ok) { error("Health check failed.") }
-            }
+            def url = "http://${ip}:80"
+            def sc = sh(script: "curl -s -o /dev/null -w '%{http_code}' ${url}", returnStdout: true).trim()
+            if (sc != "200") { error("Health check failed: HTTP ${sc}") }
           }
         }
       }
@@ -100,12 +90,30 @@ spec:
       when { expression { currentBuild.result == 'FAILURE' } }
       steps {
         container('cloud-sdk') {
-          sh '''
-            echo "Rolling back deployment..."
-            kubectl rollout undo deployment/simple-java-app || true
-            kubectl rollout status deployment/simple-java-app --timeout=180s || true
-          '''
+          sh 'kubectl rollout undo deployment/simple-java-app'
         }
+      }
+    }
+  }
+
+  post {
+    success {
+      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+        sh '''
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"✅ SUCCESS: ${JOB_NAME} #${BUILD_NUMBER} deployed successfully\"}" \
+          $SLACK_WEBHOOK
+        '''
+      }
+    }
+
+    failure {
+      withCredentials([string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK')]) {
+        sh '''
+          curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ FAILURE: ${JOB_NAME} #${BUILD_NUMBER} failed. Rollback executed.\"}" \
+          $SLACK_WEBHOOK
+        '''
       }
     }
   }
